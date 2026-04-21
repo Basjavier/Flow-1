@@ -16,7 +16,7 @@ from matplotlib.patches import FancyBboxPatch
 import matplotlib.ticker as mticker
 
 from .models import Asset, ScenarioParams, ScenarioResult, MonteCarloResult
-from .engine import FinancialEngine, BASE, CONSERVATIVE, STRESS, SCENARIOS
+from .engine import FinancialEngine, OPTIMISTA, REALISTA, CONSERVADOR, STRESS, SCENARIOS
 from .sensitivity import SensitivityAnalyzer
 
 # ---------------------------------------------------------------------------
@@ -102,22 +102,27 @@ def plot_asset_report(
 
 def _plot_roi_vs_price(ax, asset: Asset, params: ScenarioParams, entry_price: float):
     breakeven = FinancialEngine.breakeven_price(asset, params)
-    max_30 = FinancialEngine.max_bid(asset, params, 0.30)
-    max_35 = FinancialEngine.max_bid(asset, params, 0.35)
+    max_20 = FinancialEngine.max_bid(asset, params, 0.20)
+    max_25 = FinancialEngine.max_bid(asset, params, 0.25)
 
     price_min = asset.catalog_base_uf * 0.85
-    price_max = breakeven * 1.05
+    price_max = max(breakeven * 1.05, price_min * 1.5) if breakeven > 0 else price_min * 1.5
     prices = np.linspace(price_min, price_max, 200)
     rois = [FinancialEngine.roi_at_price(asset, params, p) * 100 for p in prices]
 
     ax.plot(prices, rois, color=STYLE["blue"], linewidth=2.0)
-    ax.axhline(30, color=STYLE["yellow"], linestyle="--", linewidth=1.2, label="30% ROI objetivo")
+    ax.axhline(20, color=STYLE["yellow"], linestyle="--", linewidth=1.2, label="20% ROI objetivo")
     ax.axhline(0, color=STYLE["red"], linestyle="--", linewidth=1.0, alpha=0.7, label="Break-even")
-    ax.axvline(entry_price, color=STYLE["green"], linestyle=":", linewidth=1.2, label=f"Precio base: {entry_price:.0f} UF")
-    ax.axvline(max_35, color=STYLE["orange"], linestyle=":", linewidth=1.2, label=f"Bid inicial (35%): {max_35:.0f} UF")
-    ax.axvline(max_30, color=STYLE["yellow"], linestyle=":", linewidth=1.2, label=f"Max bid (30%): {max_30:.0f} UF")
+    ax.axvline(asset.catalog_base_uf, color=STYLE["green"], linestyle=":", linewidth=1.2,
+               label=f"Base catálogo: {asset.catalog_base_uf:.0f} UF")
+    if max_25 > 0:
+        ax.axvline(max_25, color=STYLE["orange"], linestyle=":", linewidth=1.2,
+                   label=f"Bid apertura (25%): {max_25:.0f} UF")
+    if max_20 > 0:
+        ax.axvline(max_20, color=STYLE["yellow"], linestyle=":", linewidth=1.2,
+                   label=f"Max bid (20%): {max_20:.0f} UF")
 
-    ax.fill_between(prices, rois, 30, where=[r >= 30 for r in rois], alpha=0.12, color=STYLE["green"])
+    ax.fill_between(prices, rois, 20, where=[r >= 20 for r in rois], alpha=0.12, color=STYLE["green"])
     ax.fill_between(prices, rois, 0, where=[r < 0 for r in rois], alpha=0.12, color=STYLE["red"])
 
     ax.set_xlabel("Precio de entrada (UF)")
@@ -128,14 +133,14 @@ def _plot_roi_vs_price(ax, asset: Asset, params: ScenarioParams, entry_price: fl
 
 
 def _plot_scenarios_bar(ax, asset: Asset, entry_price: float):
-    scenarios = [BASE, CONSERVATIVE, STRESS]
+    scenarios = [OPTIMISTA, REALISTA, CONSERVADOR, STRESS]
     names = [s.name for s in scenarios]
     rois = [ScenarioResult(asset=asset, params=s, entry_price=entry_price).roi * 100 for s in scenarios]
     profits = [ScenarioResult(asset=asset, params=s, entry_price=entry_price).profit for s in scenarios]
-    colors = [STYLE["green"], STYLE["yellow"], STYLE["red"]]
+    colors = [STYLE["green"], STYLE["blue"], STYLE["yellow"], STYLE["red"]]
 
     bars = ax.bar(names, rois, color=colors, alpha=0.85, edgecolor=STYLE["grid"], linewidth=0.5, width=0.5)
-    ax.axhline(30, color=STYLE["yellow"], linestyle="--", linewidth=1.2, label="30% mínimo")
+    ax.axhline(20, color=STYLE["yellow"], linestyle="--", linewidth=1.2, label="20% objetivo")
     ax.axhline(0, color=STYLE["red"], linestyle="--", linewidth=0.8, alpha=0.6)
 
     for bar, roi, profit in zip(bars, rois, profits):
@@ -216,14 +221,14 @@ def plot_portfolio(
     w = 0.35
 
     # --- ROI por escenario ---
-    base_rois    = [ScenarioResult(asset=a, params=BASE, entry_price=a.catalog_base_uf).roi * 100 for a in assets]
-    conserv_rois = [ScenarioResult(asset=a, params=CONSERVATIVE, entry_price=a.catalog_base_uf).roi * 100 for a in assets]
-    stress_rois  = [ScenarioResult(asset=a, params=STRESS, entry_price=a.catalog_base_uf).roi * 100 for a in assets]
+    base_rois    = [ScenarioResult(asset=a, params=OPTIMISTA,   entry_price=a.catalog_base_uf).roi * 100 for a in assets]
+    conserv_rois = [ScenarioResult(asset=a, params=REALISTA,    entry_price=a.catalog_base_uf).roi * 100 for a in assets]
+    stress_rois  = [ScenarioResult(asset=a, params=STRESS,      entry_price=a.catalog_base_uf).roi * 100 for a in assets]
 
-    axes[0].bar(x - w, base_rois, w, label="Base", color=STYLE["green"], alpha=0.8)
-    axes[0].bar(x, conserv_rois, w, label="Conservador", color=STYLE["yellow"], alpha=0.8)
+    axes[0].bar(x - w, base_rois, w, label="Optimista", color=STYLE["green"], alpha=0.8)
+    axes[0].bar(x, conserv_rois, w, label="Realista", color=STYLE["yellow"], alpha=0.8)
     axes[0].bar(x + w, stress_rois, w, label="Stress", color=STYLE["red"], alpha=0.8)
-    axes[0].axhline(30, color=STYLE["yellow"], linestyle="--", linewidth=1.0)
+    axes[0].axhline(20, color=STYLE["yellow"], linestyle="--", linewidth=1.0)
     axes[0].axhline(0, color=STYLE["red"], linestyle="--", linewidth=0.8, alpha=0.6)
     axes[0].set_xticks(x)
     axes[0].set_xticklabels(labels, fontsize=8)
@@ -243,7 +248,7 @@ def plot_portfolio(
     axes[1].set_xticks(x)
     axes[1].set_xticklabels(labels, fontsize=8)
     axes[1].set_ylabel("UF")
-    axes[1].set_title(f"Max Bid vs Base Catálogo\n(supuesto conservador, {target_roi*100:.0f}% ROI objetivo)")
+    axes[1].set_title(f"Max Bid vs Base Catálogo\n(escenario realista, {target_roi*100:.0f}% ROI objetivo)")
     axes[1].legend(fontsize=8, framealpha=0.3, facecolor=STYLE["panel"], labelcolor=STYLE["text"])
 
     # --- Matriz riesgo/retorno (confianza vs ROI conservador) ---
@@ -260,7 +265,7 @@ def plot_portfolio(
             textcoords="offset points", xytext=(6, 4), fontsize=9,
             color=STYLE["text"], fontweight="bold",
         )
-    axes[2].axhline(30, color=STYLE["yellow"], linestyle="--", linewidth=1.0, label="30% ROI mínimo")
+    axes[2].axhline(20, color=STYLE["yellow"], linestyle="--", linewidth=1.0, label="20% ROI objetivo")
     axes[2].axhline(0, color=STYLE["red"], linestyle="--", linewidth=0.8, alpha=0.5)
     axes[2].set_xlabel("N° comparables (confianza estadística)")
     axes[2].set_ylabel("ROI conservador (%)")

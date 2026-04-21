@@ -1,23 +1,34 @@
 """
-Core data models for institutional-grade auction real estate analysis.
+Core data models — recalibrated for real Chilean remate execution.
 
-Financial model (reverse-engineered from empirical Chilean auction data):
-  k           = 1 + renovation_pct + fixed_cost_rate + monthly_carrying_rate * months
-  total_cost  = entry_price * k
-  net_sale    = fair_value * appreciation_factor * sale_pct * (1 - selling_costs_pct)
-  profit      = net_sale - total_cost
-  roi         = profit / total_cost
-  max_bid     = net_sale / ((1 + target_roi) * k)
+KEY INSIGHT: Renovation is a function of m², not purchase price.
+A 59m² apartment costs ~265 UF to renovate regardless of whether you
+paid 700 UF or 900 UF for it. The old model (renovation = % of entry)
+was underestimating costs by 3x and inflating ROI to unrealistic levels.
 
-Calibrated constants:
-  fixed_cost_rate      = 0.0477   (~4.77% of entry: notaría, inscripción, IVA)
-  monthly_carrying_rate = 0.0075  (0.75%/month: gastos comunes, contrib., seguro)
-  selling_costs_pct    = 0.03     (3% exit: corretaje + notaría)
-  bathroom_adjustment  = 0.88     (12% haircut for 3d+/1b vs comparable 2b set)
+Revised cost structure:
+  proportional  = entry_price × (1 + fixed_cost_rate + monthly_carrying_rate × months)
+  renovation_uf = renovation_uf_per_m2 × asset.m2
+  hidden_debts  = contribuciones + gastos_comunes atrasados (absolute UF)
+  total_cost    = proportional + renovation_uf + hidden_debts
+
+  net_sale      = fair_value × bath_adj × appreciation_factor × sale_pct × (1 - selling_costs_pct)
+  profit        = net_sale - total_cost
+  roi           = profit / total_cost
+
+  max_bid(roi)  = (net_sale/(1+roi) - renovation_uf - hidden_debts) / (1 + fixed_rate + monthly_rate×months)
+
+Calibrated constants (Chile 2025-2026):
+  fixed_cost_rate       = 0.045   (4.5%: martillero 1.5% + notaría/CBR 2% + otros 1%)
+  monthly_carrying_rate = 0.0075  (0.75%/month: gastos comunes + contrib. + seguro)
+  selling_costs_pct     = 0.035   (3.5%: corretaje 2% + IVA 0.38% + notaría/CBR 1.12%)
+  renovation_uf_per_m2  = 4.5     (UF/m²: renovación media para propiedad en remate)
+  hidden_debts_uf       = 100     (UF: contrib. atrasadas + gastos comunes ~18 meses)
+  bathroom_adjustment   = 0.88    (3d+/1b vs comp set 3d/2b)
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
@@ -39,8 +50,6 @@ class Asset:
     score: int
     notes: str = ""
 
-    # --- Derived: location ---
-
     @property
     def days_to_auction(self) -> int:
         return (self.auction_date - date.today()).days
@@ -48,8 +57,6 @@ class Asset:
     @property
     def is_urgent(self) -> bool:
         return self.days_to_auction <= 10
-
-    # --- Derived: market quality ---
 
     @property
     def comparable_confidence(self) -> str:
@@ -61,18 +68,15 @@ class Asset:
 
     @property
     def comparable_uncertainty_std(self) -> float:
-        """Std dev for Monte Carlo market price shock, based on comp count."""
         if self.n_comparables >= 8:
             return 0.12
         elif self.n_comparables >= 5:
             return 0.16
         return 0.22
 
-    # --- Derived: bathroom adjustment ---
-
     @property
     def bathroom_adjustment(self) -> float:
-        """Structural discount: 3+ beds with only 1 bath underperforms comp set."""
+        """3d+/1b underperforms comparable 2-bath set by ~12%."""
         if self.bedrooms >= 3 and self.bathrooms == 1:
             return 0.88
         return 1.0
@@ -91,7 +95,6 @@ class Asset:
 
     @property
     def discount_vs_catalog(self) -> float:
-        """Discount of catalog base price vs adjusted fair value."""
         return 1.0 - self.catalog_base_uf / self.fair_value_adjusted
 
     @property
@@ -99,30 +102,31 @@ class Asset:
         return self.catalog_base_uf / self.m2
 
     def label(self) -> str:
-        return f"#{self.id} {self.name} | {self.city} | {self.bedrooms}d/{self.bathrooms}b/{self.parking}e | {self.m2}m²"
+        return (
+            f"#{self.id} {self.name} | {self.city} | "
+            f"{self.bedrooms}d/{self.bathrooms}b/{self.parking}e | {self.m2}m²"
+        )
 
 
 @dataclass
 class ScenarioParams:
     name: str
     holding_months: int
-    renovation_pct: float
     sale_pct_market: float
     appreciation_annual: float
-    selling_costs_pct: float = 0.03
-    fixed_cost_rate: float = 0.0477
+    # Absolute costs (independent of entry price)
+    renovation_uf_per_m2: float       # UF per m² — calibrated to Chilean market
+    hidden_debts_uf: float            # gastos comunes + contribuciones atrasadas
+    # Proportional costs (% of entry price)
+    fixed_cost_rate: float = 0.045    # martillero + notaría + CBR at entry
     monthly_carrying_rate: float = 0.0075
+    selling_costs_pct: float = 0.035  # corretaje + IVA + notaría/CBR at exit
     use_adjusted_fair_value: bool = True
 
     @property
-    def cost_multiplier(self) -> float:
-        """k factor: total_cost = entry_price * k"""
-        return (
-            1
-            + self.renovation_pct
-            + self.fixed_cost_rate
-            + self.monthly_carrying_rate * self.holding_months
-        )
+    def proportional_multiplier(self) -> float:
+        """Entry-proportional part of cost multiplier (excludes renovation + hidden debts)."""
+        return 1 + self.fixed_cost_rate + self.monthly_carrying_rate * self.holding_months
 
 
 @dataclass
@@ -149,9 +153,24 @@ class ScenarioResult:
     def net_sale(self) -> float:
         return self.gross_sale * (1 - self.params.selling_costs_pct)
 
+    # --- Cost breakdown ---
+
+    @property
+    def cost_entry_proportional(self) -> float:
+        """Entry price + transaction costs at entry (proportional to bid)."""
+        return self.entry_price * self.params.proportional_multiplier
+
+    @property
+    def cost_renovation(self) -> float:
+        return self.params.renovation_uf_per_m2 * self.asset.m2
+
+    @property
+    def cost_hidden_debts(self) -> float:
+        return self.params.hidden_debts_uf
+
     @property
     def total_costs(self) -> float:
-        return self.entry_price * self.params.cost_multiplier
+        return self.cost_entry_proportional + self.cost_renovation + self.cost_hidden_debts
 
     @property
     def profit(self) -> float:
@@ -173,6 +192,8 @@ class ScenarioResult:
 
     @property
     def equity_multiple(self) -> float:
+        if self.total_costs == 0:
+            return 0.0
         return self.net_sale / self.total_costs
 
 
@@ -190,6 +211,7 @@ class MonteCarloResult:
     p75_roi: float
     p95_roi: float
     prob_positive: float
+    prob_above_15pct: float
     prob_above_20pct: float
     prob_above_30pct: float
     prob_loss: float
