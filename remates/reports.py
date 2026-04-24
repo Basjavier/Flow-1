@@ -325,10 +325,10 @@ def _print_bid_table(asset: Asset, params: ScenarioParams):
         if not viable or row["max_bid_uf"] <= 0:
             t.add_row(
                 Text(_fmt_pct(roi), style=style),
-                Text("[red]NO VIABLE[/red]"),
+                Text("NO VIABLE", style="red"),
                 "—", "—", "—", "—",
                 Text(row["level_name"], style="dim"),
-                "[dim]Renovación+deudas consumen el spread[/dim]",
+                Text("Renovación+deudas consumen el spread", style="dim"),
             )
             continue
 
