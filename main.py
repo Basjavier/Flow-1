@@ -42,7 +42,7 @@ def main():
 
     # Imports here so errors are reported cleanly
     from data.tier_a import TIER_A, TIER_A_BY_ID
-    from remates.engine import REALISTA
+    from remates.engine import ESTANDAR, DETERIORADO
     from remates.reports import (
         print_portfolio_summary,
         print_asset_report,
@@ -62,7 +62,7 @@ def main():
         assets = TIER_A
 
     # Portfolio summary (always shown)
-    print_portfolio_summary(assets, REALISTA)
+    print_portfolio_summary(assets, ESTANDAR)
 
     if args.summary_only:
         return
@@ -73,22 +73,22 @@ def main():
 
         if args.charts:
             from remates.charts import plot_asset_report, plot_tornado
-            from remates.engine import FinancialEngine, REALISTA
+            from remates.engine import FinancialEngine, ESTANDAR
             from remates.sensitivity import SensitivityAnalyzer
 
-            bid_20 = FinancialEngine.max_bid(asset, REALISTA, 0.20)
+            bid_20 = FinancialEngine.max_bid(asset, ESTANDAR, 0.20)
 
             mc = None
             if args.mc and bid_20 > 0:
-                mc = SensitivityAnalyzer.monte_carlo(asset, REALISTA, bid_20, n_simulations=args.n_mc)
+                mc = SensitivityAnalyzer.monte_carlo(asset, ESTANDAR, bid_20, n_simulations=args.n_mc)
 
             safe_name = asset.city.replace(" ", "_")
             plot_asset_report(
-                asset, REALISTA, bid_20, mc_result=mc,
+                asset, ESTANDAR, bid_20, mc_result=mc,
                 output_path=os.path.join(args.output, f"reporte_{asset.id}_{safe_name}.png"),
             )
             plot_tornado(
-                asset, REALISTA, bid_20,
+                asset, ESTANDAR, bid_20,
                 output_path=os.path.join(args.output, f"tornado_{asset.id}_{safe_name}.png"),
             )
 
@@ -96,14 +96,14 @@ def main():
     if args.charts and len(assets) > 1:
         from remates.charts import plot_portfolio
         plot_portfolio(
-            assets, CONSERVATIVE,
+            assets, DETERIORADO,
             target_roi=args.target_roi,
             output_path=os.path.join(args.output, "portfolio_comparison.png"),
         )
 
     # Capital allocation
     if args.capital:
-        print_capital_allocation(TIER_A, REALISTA, args.capital, args.target_roi)
+        print_capital_allocation(TIER_A, ESTANDAR, args.capital, args.target_roi)
 
 
 if __name__ == "__main__":
