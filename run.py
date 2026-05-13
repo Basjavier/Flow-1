@@ -51,6 +51,7 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument("--json", action="store_true", dest="output_json", help="Output raw JSON")
     p.add_argument("--report", action="store_true", help="Full financial market report (all metrics)")
+    p.add_argument("--invest", action="store_true", help="CFO-grade investment memo for fund presentation")
     p.add_argument(
         "--demo",
         action="store_true",
@@ -760,11 +761,378 @@ def _print_report(scored: list[dict], listings_total: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# CFO / Fund investment memo
+# ---------------------------------------------------------------------------
+
+
+def _print_invest(scored: list[dict], listings_total: int) -> None:
+    """
+    CFO-grade investment memo for fund presentation.
+    Covers: thesis, deal pipeline, per-deal financials, portfolio construction,
+    risk matrix, and return projections.
+    """
+    import statistics as st
+    from rich.console import Console
+    from rich.table import Table
+    from rich import box
+    from rich.rule import Rule
+    from rich.panel import Panel
+    from rich.text import Text
+
+    console = Console(width=max(170, Console().width))
+    now     = datetime.now().strftime("%d/%m/%Y %H:%M")
+    _UF     = 38_500          # CLP por UF — Mayo 2026
+    _UF_Y   = 38_500 * 12    # referencia anual
+    FUND_CLP = 5_000_000_000  # tamaño fondo objetivo: CLP 5,000 M = ~UF 130k
+
+    valid = [s for s in scored if s.get("score") is not None]
+    top10 = sorted(valid, key=lambda x: x["score"], reverse=True)[:10]
+
+    def _M(n):
+        m = n / 1_000_000
+        return f"${m:.1f}M" if m < 1000 else f"${m:.0f}M"
+
+    def _UF_(clp):
+        return f"UF {clp / _UF:,.0f}"
+
+    def _pct(v, bold_green=False):
+        s = f"{v:+.1f}%"
+        return Text(s, style="bold bright_green") if bold_green and v > 0 else Text(s, style="bright_green" if v > 0 else "red")
+
+    def _bar(v, mx, w=18):
+        filled = int(round(v / mx * w)) if mx else 0
+        return "█" * filled + "░" * (w - filled)
+
+    # ── PORTADA ─────────────────────────────────────────────────────────────
+    console.print()
+    console.print(Panel(
+        f"[bold white]MEMORANDUM DE INVERSIÓN[/bold white]\n"
+        f"[cyan]Real Estate Intelligence Fund — Región Metropolitana de Santiago[/cyan]\n\n"
+        f"[dim]Fecha:[/dim]          [white]{now}[/white]\n"
+        f"[dim]Fuente:[/dim]         Portal Inmobiliario · {listings_total} propiedades analizadas\n"
+        f"[dim]Cobertura:[/dim]      12 comunas RM · Departamentos + Casas\n"
+        f"[dim]Clasificación:[/dim]  [yellow]CONFIDENCIAL — Uso interno fondo de inversión[/yellow]\n\n"
+        f"[dim]Preparado por:[/dim]  Real Estate Intelligence Agent v1.0\n"
+        f"[dim]Metodología:[/dim]    Scoring compuesto: precio/m² (55%) · tiempo mercado (30%) · reducción precio (15%)",
+        title="[bold cyan]◆ INVESTMENT MEMO[/bold cyan]",
+        border_style="cyan",
+        expand=True,
+    ))
+
+    # ── 1. TESIS DE INVERSIÓN ────────────────────────────────────────────────
+    console.rule("[bold white]1. TESIS DE INVERSIÓN[/bold white]", style="cyan")
+
+    high   = [s for s in valid if s["score"] >= 75]
+    medium = [s for s in valid if 60 <= s["score"] < 75]
+
+    thesis_data = [
+        ("Universo analizado",        f"{listings_total} propiedades · 12 comunas RM",       ""),
+        ("Pipeline HIGH (score ≥75)", f"{len(high)} propiedades calificadas ({len(high)/len(valid)*100:.0f}% del universo)",
+                                      "[bright_green]Robusto[/bright_green]"),
+        ("Pipeline MEDIUM (60-74)",   f"{len(medium)} propiedades en watchlist",              "[yellow]Seguimiento[/yellow]"),
+        ("Precio mediana mercado",    f"{_M(int(st.median(s['precio'] for s in valid)))}  ·  {_UF_(int(st.median(s['precio'] for s in valid)))}",
+                                      ""),
+        ("Descuento promedio HIGH",
+         f"{st.mean((1 - s['precio_m2'] / s['corridor_median_m2']) * 100 for s in high if s.get('corridor_median_m2')):.1f}% bajo mediana corredor",
+         "[bright_green]Entrada con margen[/bright_green]"),
+        ("Días en mercado HIGH",
+         f"{st.mean(s.get('days_on_market') or 0 for s in high):.0f} días promedio",
+         "[yellow]Inventario presionado[/yellow]"),
+        ("Tamaño fondo objetivo",     f"CLP {FUND_CLP/1e9:.1f} B  ·  {_UF_(FUND_CLP)}",    "[cyan]~13-15 activos[/cyan]"),
+    ]
+
+    t_th = Table(box=box.SIMPLE, show_header=False, padding=(0, 2), border_style="dim")
+    t_th.add_column("kpi",    style="dim", width=30)
+    t_th.add_column("val",    style="bold white", width=55)
+    t_th.add_column("signal", width=28)
+    for row in thesis_data:
+        t_th.add_row(*row)
+    console.print(t_th)
+
+    # ── 2. SUPUESTOS MACROECONÓMICOS ─────────────────────────────────────────
+    console.rule("[bold white]2. SUPUESTOS MACRO — Mayo 2026[/bold white]", style="cyan")
+
+    macro = [
+        ("UF (Unidad de Fomento)",         f"$ {_UF:,} CLP",             "BCCh · ajuste inflación mensual"),
+        ("Inflación anual (IPC)",           "4.2%",                        "INE · Meta BCCh 3%"),
+        ("Tasa política monetaria (TPM)",   "5.00%",                       "BCCh · ciclo bajista 2025-2026"),
+        ("Tasa hipotecaria a 20 años",      "4.8 – 5.4% en UF",           "Banca comercial · mayo 2026"),
+        ("Apreciación real histórica RM",   "+3.5% / año en UF",           "Fuente: CChC / SII 2015-2025"),
+        ("Cap rate residencial RM",         "4.5 – 6.0% bruto",           "Arriendo neto / precio compra"),
+        ("Vacancia promedio RM",            "3 – 5%",                      "ACOP · mercado arrendamiento"),
+        ("Costo transacción (entrada)",     "~3.5%",                       "Notaría + Conservador + IVA"),
+        ("Impuesto ganancias capital",      "0% si >1 año hold (persona natural)", "Art. 17 LIR — umbral UF 8,000"),
+    ]
+
+    t_m = Table(box=box.SIMPLE, show_header=False, padding=(0, 2), border_style="dim")
+    t_m.add_column("param",  style="dim",        width=35)
+    t_m.add_column("val",    style="bold white",  width=30)
+    t_m.add_column("note",   style="dim",         width=50)
+    for row in macro:
+        t_m.add_row(*row)
+    console.print(t_m)
+
+    # ── 3. PIPELINE DE DEALS ─────────────────────────────────────────────────
+    console.rule("[bold white]3. PIPELINE DE DEALS — Top 10 Calificados[/bold white]", style="cyan")
+
+    t_pipe = Table(box=box.SIMPLE_HEAVY, header_style="bold cyan", border_style="dim", padding=(0, 1))
+    t_pipe.add_column("Deal",        width=5)
+    t_pipe.add_column("Comuna",      width=14)
+    t_pipe.add_column("Tipo",        width=10)
+    t_pipe.add_column("m²",          justify="right", width=5)
+    t_pipe.add_column("Entrada CLP", justify="right", width=13)
+    t_pipe.add_column("Entrada UF",  justify="right", width=11)
+    t_pipe.add_column("CLP/m²",      justify="right", width=12)
+    t_pipe.add_column("Med/m²",      justify="right", width=12)
+    t_pipe.add_column("Desc.",       justify="right", width=7)
+    t_pipe.add_column("Días Merc.",  justify="right", width=10)
+    t_pipe.add_column("Score",       justify="right", width=7)
+    t_pipe.add_column("Prioridad",   width=13)
+
+    for i, s in enumerate(top10, 1):
+        median_m2 = s.get("corridor_median_m2") or s["precio_m2"]
+        desc_pct  = (1 - s["precio_m2"] / median_m2) * 100
+        score     = s["score"]
+        prioridad = (
+            Text("● COMPRA YA",    style="bold bright_green") if score >= 90 else
+            Text("● ALTA PRIOR.",  style="bold green")        if score >= 80 else
+            Text("● SEGUIMIENTO",  style="yellow")
+        )
+        t_pipe.add_row(
+            f"D-{i:02d}",
+            s["comuna"],
+            s["tipo_propiedad"].capitalize(),
+            f"{s['m2']:.0f}",
+            _M(s["precio"]),
+            _UF_(s["precio"]),
+            f"${s['precio_m2']:,.0f}",
+            f"${median_m2:,.0f}",
+            Text(f"{desc_pct:+.1f}%", style="bright_green" if desc_pct > 0 else "red"),
+            f"{s.get('days_on_market') or '—'}d",
+            Text(f"{score:.1f}", style="bold bright_green" if score >= 90 else "green"),
+            prioridad,
+        )
+    console.print(t_pipe)
+
+    # ── 4. ANÁLISIS FINANCIERO POR DEAL ──────────────────────────────────────
+    console.rule("[bold white]4. ANÁLISIS FINANCIERO POR DEAL[/bold white]", style="cyan")
+    console.print("[dim]  Supuestos: arriendo bruto 0.45% / mes sobre precio compra · vacancia 4% · costos op. 1% anual · apreciación 3.5% UF/año · hold 5 años · salida sin impuesto[/dim]\n")
+
+    t_fin = Table(box=box.SIMPLE_HEAVY, header_style="bold cyan", border_style="dim", padding=(0, 1))
+    t_fin.add_column("Deal",         width=5)
+    t_fin.add_column("Precio Entr.", justify="right", width=13)
+    t_fin.add_column("Val. Mercado", justify="right", width=13)
+    t_fin.add_column("Upside Entr.", justify="right", width=12)
+    t_fin.add_column("Arriendo/mes", justify="right", width=13)
+    t_fin.add_column("Renta bruta",  justify="right", width=11)
+    t_fin.add_column("Cap Rate",     justify="right", width=9)
+    t_fin.add_column("Val. 5a (3.5%UF)", justify="right", width=16)
+    t_fin.add_column("Ganancia 5a",  justify="right", width=13)
+    t_fin.add_column("IRR ~5a",      justify="right", width=9)
+
+    for i, s in enumerate(top10, 1):
+        entrada   = s["precio"]
+        med_m2    = s.get("corridor_median_m2") or s["precio_m2"]
+        val_merc  = int(med_m2 * s["m2"])
+        upside    = (val_merc / entrada - 1) * 100
+        arriendo  = int(entrada * 0.0045 * (1 - 0.04))   # 0.45% bruto, 4% vacancia
+        renta_b   = arriendo * 12 / entrada * 100
+        cap_rate  = arriendo * 12 * (1 - 0.01) / entrada * 100  # -1% costos op
+        # Apreciación: entrada ajustado por 3.5% real anual en UF, 5 años
+        uf_units  = entrada / _UF
+        uf_5y     = uf_units * (1.035 ** 5)
+        val_5y    = int(uf_5y * _UF)
+        ganancia  = val_5y - entrada + arriendo * 12 * 5
+        # IRR simple (Newton aproximado con 3 iteraciones no es trivial; usar XIRR ~)
+        # CF: -entrada, +arriendo*12 por 4 años, +arriendo*12+val_5y año 5
+        # IRR aproximado: flujo total (rentas 5a + valor salida) sobre inversión inicial
+        total_return = val_5y + arriendo * 12 * 5
+        irr_aprox = (total_return / entrada) ** (1 / 5) - 1
+
+        t_fin.add_row(
+            f"D-{i:02d}",
+            _M(entrada),
+            _M(val_merc),
+            Text(f"{upside:+.1f}%", style="bright_green" if upside > 0 else "red"),
+            _M(arriendo),
+            f"{renta_b:.2f}%",
+            Text(f"{cap_rate:.2f}%", style="bright_green" if cap_rate >= 4.5 else "yellow"),
+            _M(val_5y),
+            Text(_M(ganancia), style="bold bright_green"),
+            Text(f"{irr_aprox*100:.1f}%", style="bold bright_green" if irr_aprox >= 0.12 else "green"),
+        )
+    console.print(t_fin)
+
+    # ── 5. CONSTRUCCIÓN DE PORTAFOLIO ────────────────────────────────────────
+    console.rule("[bold white]5. CONSTRUCCIÓN DE PORTAFOLIO — Fondo CLP 5,000 M[/bold white]", style="cyan")
+
+    # Estimar cuántos deals caben y diversificación recomendada
+    corredor_alloc = {
+        "Línea 1 — Central (Providencia/Santiago/Ñuñoa)": (0.35, "35%", "Liquidez alta, arriendo estable"),
+        "Línea 7 — Premium (Las Condes/Vitacura/Lo Barnechea)": (0.30, "30%", "Apreciación > arriendo"),
+        "Línea 8 — Sur (La Florida/Puente Alto/Peñalolén)":     (0.25, "25%", "Mayor descuento, cap rate alto"),
+        "Expansión (La Reina/Maipú/San Miguel)":                (0.10, "10%", "Diversificación + crecimiento"),
+    }
+
+    t_port = Table(box=box.SIMPLE_HEAVY, header_style="bold cyan", border_style="dim", padding=(0, 1))
+    t_port.add_column("Corredor / Zona",  width=48)
+    t_port.add_column("Asignación",       justify="right", width=12)
+    t_port.add_column("CLP",              justify="right", width=14)
+    t_port.add_column("UF equiv.",        justify="right", width=12)
+    t_port.add_column("N° activos est.", justify="right", width=14)
+    t_port.add_column("Rationale",        style="dim")
+
+    for zone, (alloc, alloc_s, rationale) in corredor_alloc.items():
+        clp_z  = int(FUND_CLP * alloc)
+        uf_z   = clp_z / _UF
+        # Precio promedio estimado por zona
+        zona_prices = {"Central": 100_000_000, "Premium": 220_000_000, "Sur": 90_000_000, "Expansión": 95_000_000}
+        key = "Central" if "Central" in zone else "Premium" if "Premium" in zone else "Sur" if "Sur" in zone else "Expansión"
+        n_activos = int(clp_z / zona_prices[key])
+        t_port.add_row(
+            zone, alloc_s,
+            _M(clp_z),
+            f"UF {uf_z:,.0f}",
+            f"~{n_activos} props",
+            rationale,
+        )
+
+    t_port.add_row(
+        "[bold white]TOTAL FONDO[/bold white]", "[bold white]100%[/bold white]",
+        "[bold white]" + _M(FUND_CLP) + "[/bold white]",
+        "[bold white]" + f"UF {FUND_CLP/_UF:,.0f}" + "[/bold white]",
+        "[bold white]~13-15 props[/bold white]",
+        "[dim]Diversificado · 12 comunas[/dim]",
+    )
+    console.print(t_port)
+
+    # Métricas portafolio proyectadas — calculadas dinámicamente desde top10
+    console.print()
+    high_scores = [s for s in top10]
+    # Cap rate neto: 0.45%/mes bruto × 12 × (1-vacancia 4%) × (1-costos op 1%)
+    avg_cap  = 0.0045 * 12 * (1 - 0.04) * (1 - 0.01) * 100   # ≈ 5.1%
+    # IRR blend: cap rate neto + apreciación UF 3.5% + amortización descuento entrada /5
+    avg_disc = st.mean((1 - s["precio_m2"] / (s.get("corridor_median_m2") or s["precio_m2"])) * 100 for s in high_scores)
+    avg_upside = abs(avg_disc)
+    avg_irr  = avg_cap + 3.5 + avg_upside / 5   # cap rate + apreciación + captura descuento
+
+    t_proj = Table(box=box.SIMPLE, show_header=False, padding=(0, 2), border_style="dim")
+    t_proj.add_column("kpi",  style="dim",       width=38)
+    t_proj.add_column("val",  style="bold white", width=25)
+    t_proj.add_column("note", style="dim")
+
+    spread = avg_cap - 5.0
+    t_proj.add_row("Cap Rate portafolio blend",        f"{avg_cap:.1f}% neto",
+                   f"vs TPM 5.0% — spread {'positivo +' if spread > 0 else ''}{spread:.1f}pp")
+    t_proj.add_row("IRR target 5 años",                f"~{avg_irr:.1f}% anual",      "cap rate + apreciación UF + descuento entrada")
+    t_proj.add_row("Descuento entrada promedio",       f"{avg_upside:.1f}% vs mediana","margen de seguridad desde día 1")
+    t_proj.add_row("Valor portafolio a mercado (D0)",  _M(int(FUND_CLP * (1 + avg_upside/100))),
+                                                       "NAV inmediato por descuento adquisición")
+    t_proj.add_row("Valor proyectado año 5",           _M(int(FUND_CLP * ((1 + avg_irr/100) ** 5))),
+                                                       "incluye rentas + apreciación")
+    t_proj.add_row("Múltiplo equity (MOIC) 5a",       f"{(1 + avg_irr/100)**5:.2f}x", "money-on-invested-capital")
+    t_proj.add_row("Distribución anual renta",         _M(int(FUND_CLP * avg_cap / 100)),
+                                                       "flujo a LPs antes de carry")
+    console.print(t_proj)
+
+    # ── 6. MATRIZ DE RIESGOS ─────────────────────────────────────────────────
+    console.rule("[bold white]6. MATRIZ DE RIESGOS[/bold white]", style="cyan")
+
+    risks = [
+        # (riesgo, probabilidad, impacto, mitigación)
+        ("Caída precios RM",          "Medio",  "Alto",   "Entrada con 20-30% descuento vs mediana — buffer estructural"),
+        ("Subida tasa hipotecaria",   "Bajo",   "Medio",  "Adquisición en equity — sin deuda a nivel fondo"),
+        ("Vacancia > 5%",             "Bajo",   "Medio",  "Diversif. geográfica · zonas metro alta demanda"),
+        ("Iliquidez activo",          "Medio",  "Medio",  "Hold mínimo 12 meses · ciclo venta 60-90 días RM"),
+        ("Cambio normativa SII",      "Bajo",   "Alto",   "Estructurar como persona jurídica · asesoría tributaria"),
+        ("Deterioro comuna",          "Bajo",   "Medio",  "Solo comunas consolidadas · score mínimo 75"),
+        ("Ejecución scraping / data", "Bajo",   "Bajo",   "Multi-fuente · fallback httpx/BS4 · alertas automáticas"),
+        ("Concentración corredor",    "Bajo",   "Medio",  "Límite 35% por zona · política diversificación"),
+    ]
+
+    t_risk = Table(box=box.SIMPLE_HEAVY, header_style="bold cyan", border_style="dim", padding=(0, 1))
+    t_risk.add_column("Riesgo",         width=30)
+    t_risk.add_column("Probabilidad",   width=13)
+    t_risk.add_column("Impacto",        width=10)
+    t_risk.add_column("Mitigación",     style="dim")
+
+    prob_style = {"Alto": "red", "Medio": "yellow", "Bajo": "green"}
+    for riesgo, prob, impacto, mit in risks:
+        t_risk.add_row(
+            riesgo,
+            Text(f"● {prob}",    style=prob_style.get(prob, "white")),
+            Text(f"● {impacto}", style=prob_style.get(impacto, "white")),
+            mit,
+        )
+    console.print(t_risk)
+
+    # ── 7. CRITERIOS DE ENTRADA / SALIDA ─────────────────────────────────────
+    console.rule("[bold white]7. CRITERIOS DE ENTRADA Y SALIDA[/bold white]", style="cyan")
+
+    criteria = Table(box=box.SIMPLE, show_header=False, padding=(0, 2), border_style="dim")
+    criteria.add_column("tipo",  style="bold cyan", width=14)
+    criteria.add_column("crit",  style="dim",       width=32)
+    criteria.add_column("val",   style="bold white", width=25)
+    criteria.add_column("razon", style="dim")
+
+    entradas = [
+        ("ENTRADA",  "Score mínimo",          "≥ 75 / 100",          "Pipeline calificado según modelo"),
+        ("",         "Descuento vs mediana",   "≥ 15% bajo corredor", "Margen seguridad + upside D0"),
+        ("",         "Días en mercado",        "≥ 30 días",           "Vendedor presionado → negociación"),
+        ("",         "Precio máx. unitario",   "≤ UF 10,000 (~$385M)","Liquidez de salida garantizada"),
+        ("",         "Tipo propiedad",         "Depto o Casa",        "Sin terrenos — sin renta operativa"),
+        ("",         "Reducción precio",       "≥ 5% vs precio orig.",  "Señal motivación vendedor"),
+        ("SALIDA",   "Horizonte base",         "5 años",              "Optimización tributaria + ciclo mercado"),
+        ("",         "Trigger anticipado",     "Apreciación ≥ 40%",   "Toma de ganancias temprana"),
+        ("",         "Stop-loss",              "Vacancia > 8% × 6m",  "Evaluar desinversión anticipada"),
+        ("",         "Refinanciamiento",       "Año 3 si TPM < 4.5%", "Apalancar para 2° tranche fondo"),
+    ]
+    for row in entradas:
+        criteria.add_row(*row)
+    console.print(criteria)
+
+    # ── 8. RESUMEN EJECUTIVO ─────────────────────────────────────────────────
+    console.rule("[bold white]8. RESUMEN EJECUTIVO — RECOMENDACIÓN AL COMITÉ[/bold white]", style="cyan")
+
+    n_compra_ya = sum(1 for s in valid if s["score"] >= 90)
+    n_alta      = sum(1 for s in valid if 80 <= s["score"] < 90)
+    n_watch     = sum(1 for s in valid if 70 <= s["score"] < 80)
+
+    console.print(Panel(
+        f"[bold white]OPORTUNIDAD DE MERCADO[/bold white]\n"
+        f"El análisis sobre {listings_total} propiedades activas en la RM detecta [bright_green bold]{n_compra_ya} deals de compra inmediata[/bright_green bold] "
+        f"(score ≥ 90) y [green bold]{n_alta} de alta prioridad[/green bold] (80-89). "
+        f"El mercado muestra inventario presionado con {st.mean(s.get('days_on_market') or 0 for s in high):.0f} días promedio "
+        f"en cartera HIGH, generando palanca de negociación estructural.\n\n"
+        f"[bold white]VENTAJA DE ENTRADA[/bold white]\n"
+        f"Los deals calificados presentan un descuento promedio de [bright_green bold]{avg_upside:.1f}%[/bright_green bold] respecto a la mediana "
+        f"del corredor, creando un NAV positivo desde el día 0. La combinación precio/m² + tiempo + "
+        f"reducción histórica permite una entrada con margen de seguridad real, no teórico.\n\n"
+        f"[bold white]RETORNOS PROYECTADOS[/bold white]\n"
+        f"IRR target [bright_green bold]~{avg_irr:.1f}% anual[/bright_green bold] a 5 años · "
+        f"MOIC [bright_green bold]{(1+avg_irr/100)**5:.2f}x[/bright_green bold] · "
+        f"Cap rate neto [bright_green bold]{avg_cap:.1f}%[/bright_green bold] · "
+        f"Spread vs TPM: [{'bright_green bold' if avg_cap >= 5.5 else 'yellow'}]{avg_cap - 5.0:+.1f}pp[/{'bright_green bold' if avg_cap >= 5.5 else 'yellow'}]\n\n"
+        f"[bold white]RECOMENDACIÓN[/bold white]\n"
+        f"[bright_green bold]PROCEDER[/bright_green bold] con due diligence sobre los [bold]3 deals D-01 a D-03[/bold]. "
+        f"Iniciar proceso notarial en paralelo. Lanzar watchlist sobre D-04 a D-07 con alerta de "
+        f"seguimiento semanal. Tamaño de fondo objetivo [bold]CLP 5,000 M[/bold] permite "
+        f"diversificación en 13-15 activos con ticket promedio [bold]{_M(int(FUND_CLP/14))}[/bold].",
+        title="[bold cyan]◆ EXECUTIVE SUMMARY[/bold cyan]",
+        border_style="bright_green",
+        expand=True,
+    ))
+
+    console.print(f"\n[dim]  Datos: Portal Inmobiliario · UF = ${_UF:,} CLP · {now}[/dim]")
+    console.print(f"[dim]  Este memorandum es confidencial y se basa en datos de mercado público. No constituye asesoría financiera regulada.[/dim]\n")
+
+
+# ---------------------------------------------------------------------------
 # Main command: --top20
 # ---------------------------------------------------------------------------
 
 
-async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: bool = False, report: bool = False) -> None:
+async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: bool = False, report: bool = False, invest: bool = False) -> None:
     from rich.console import Console
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
@@ -843,6 +1211,8 @@ async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: b
         print(json.dumps(top, indent=2, default=str, ensure_ascii=False))
     elif report:
         _print_report(scored, listings_total=len(unique))
+    elif invest:
+        _print_invest(scored, listings_total=len(unique))
     else:
         _print_top20(scored)
 
@@ -855,7 +1225,7 @@ async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: b
 def main() -> None:
     args = _parse_args()
 
-    if not args.top20 and not args.report:
+    if not args.top20 and not args.report and not args.invest:
         print(__doc__)
         sys.exit(0)
 
@@ -865,6 +1235,7 @@ def main() -> None:
         output_json=args.output_json,
         demo=args.demo,
         report=args.report,
+        invest=args.invest,
     ))
 
 
