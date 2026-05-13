@@ -73,6 +73,10 @@ PRIORITY_COMMUNES = [
     "Ñuñoa", "Providencia", "Santiago",
 ]
 
+# All property types to scrape (includes terrenos for full RM sweep)
+ALL_TIPOS = ["departamento", "casa", "terreno"]
+DEFAULT_TIPOS = ["departamento", "casa"]
+
 # m² buckets for corridor statistics
 M2_BUCKETS: list[tuple[float, float]] = [
     (0.0, 50.0),
