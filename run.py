@@ -50,6 +50,7 @@ def _parse_args() -> argparse.Namespace:
         help="Max pages per tipo (default: 5, ~240 listings/tipo)",
     )
     p.add_argument("--json", action="store_true", dest="output_json", help="Output raw JSON")
+    p.add_argument("--report", action="store_true", help="Full financial market report (all metrics)")
     p.add_argument(
         "--demo",
         action="store_true",
@@ -404,11 +405,366 @@ def _demo_listings() -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Financial report
+# ---------------------------------------------------------------------------
+
+
+def _print_report(scored: list[dict], listings_total: int) -> None:
+    import statistics as st
+    from rich.console import Console
+    from rich.table import Table
+    from rich import box
+    from rich.rule import Rule
+    from rich.panel import Panel
+    from rich.columns import Columns
+    from rich.text import Text
+
+    console = Console(width=max(160, Console().width))
+    now = datetime.now().strftime("%d/%m/%Y %H:%M")
+    _UF = 38_500
+
+    valid = [s for s in scored if s.get("score") is not None]
+    all_prices = [s["precio"] for s in valid]
+    all_m2     = [s["precio_m2"] for s in valid]
+
+    def _M(n: int) -> str:
+        m = n / 1_000_000
+        return f"${m:.1f}M" if m < 1000 else f"${m:.0f}M"
+
+    def _UF_val(clp: int) -> str:
+        return f"UF {clp / _UF:,.0f}"
+
+    def _pct(v: float) -> str:
+        return f"{v:+.1f}%"
+
+    def _bar(v: float, total: float, width: int = 20) -> str:
+        filled = int(round(v / total * width)) if total else 0
+        return "█" * filled + "░" * (width - filled)
+
+    # ── Header ──────────────────────────────────────────────────────────────
+    console.print()
+    console.rule("[bold white]REPORTE FINANCIERO — MERCADO INMOBILIARIO RM[/bold white]", style="cyan")
+    console.print(f"[dim]  Generado: {now}  ·  Portal Inmobiliario  ·  {listings_total} propiedades indexadas  ·  {len(valid)} con score[/dim]\n")
+
+    # ── KPIs resumen ────────────────────────────────────────────────────────
+    precio_med   = st.median(all_prices)
+    precio_avg   = st.mean(all_prices)
+    precio_min   = min(all_prices)
+    precio_max   = max(all_prices)
+    m2_med       = st.median(all_m2)
+    m2_avg       = st.mean(all_m2)
+    score_avg    = st.mean(s["score"] for s in valid)
+    score_med    = st.median(s["score"] for s in valid)
+
+    n_high   = sum(1 for s in valid if s["score"] >= 75)
+    n_medium = sum(1 for s in valid if 60 <= s["score"] < 75)
+    n_low    = sum(1 for s in valid if s["score"] < 60)
+
+    kpi = Table(box=box.SIMPLE, show_header=False, padding=(0, 2), border_style="dim")
+    kpi.add_column("metric", style="dim", width=22)
+    kpi.add_column("value",  style="bold white", width=18)
+    kpi.add_column("metric2", style="dim", width=22)
+    kpi.add_column("value2",  style="bold white", width=18)
+    kpi.add_column("metric3", style="dim", width=22)
+    kpi.add_column("value3",  style="bold white")
+
+    kpi.add_row("Precio mediana",  f"{_M(int(precio_med))}  ({_UF_val(int(precio_med))})",
+                "Precio promedio", f"{_M(int(precio_avg))}  ({_UF_val(int(precio_avg))})",
+                "Precio mínimo",   f"{_M(int(precio_min))}")
+    kpi.add_row("CLP/m² mediana",  f"${m2_med:,.0f}",
+                "CLP/m² promedio", f"${m2_avg:,.0f}",
+                "Precio máximo",   f"{_M(int(precio_max))}")
+    kpi.add_row("Score promedio",  f"{score_avg:.1f} / 100",
+                "Score mediana",   f"{score_med:.1f} / 100",
+                "UF referencia",   f"$ {_UF:,} CLP")
+    kpi.add_row("🟢 Oportunidades HIGH",   f"{n_high} props  ({n_high/len(valid)*100:.0f}%)",
+                "🟡 MEDIUM",               f"{n_medium} props  ({n_medium/len(valid)*100:.0f}%)",
+                "⚪ LOW",                  f"{n_low} props  ({n_low/len(valid)*100:.0f}%)")
+
+    console.print(kpi)
+
+    # ── Por tipo ─────────────────────────────────────────────────────────────
+    console.rule("[bold cyan]ANÁLISIS POR TIPO DE PROPIEDAD[/bold cyan]", style="dim")
+
+    tipos_data: dict[str, list] = {}
+    for s in valid:
+        tipos_data.setdefault(s["tipo_propiedad"], []).append(s)
+
+    t_tipo = Table(box=box.SIMPLE_HEAVY, header_style="bold cyan", border_style="dim", padding=(0, 1))
+    t_tipo.add_column("Tipo",         width=14)
+    t_tipo.add_column("N",            justify="right", width=6)
+    t_tipo.add_column("P. Mediana",   justify="right", width=14)
+    t_tipo.add_column("P. Promedio",  justify="right", width=14)
+    t_tipo.add_column("Min",          justify="right", width=12)
+    t_tipo.add_column("Max",          justify="right", width=12)
+    t_tipo.add_column("CLP/m² Med",   justify="right", width=12)
+    t_tipo.add_column("m² Prom",      justify="right", width=9)
+    t_tipo.add_column("Score Med",    justify="right", width=10)
+    t_tipo.add_column("HIGH ops",     justify="right", width=10)
+
+    labels = {"departamento": "Departamento", "casa": "Casa", "terreno": "Terreno"}
+    for tipo, rows in sorted(tipos_data.items(), key=lambda x: -len(x[1])):
+        precios   = [r["precio"] for r in rows]
+        pm2s      = [r["precio_m2"] for r in rows]
+        scores    = [r["score"] for r in rows]
+        m2s       = [r["m2"] for r in rows]
+        high_cnt  = sum(1 for r in rows if r["score"] >= 75)
+        t_tipo.add_row(
+            labels.get(tipo, tipo),
+            str(len(rows)),
+            _M(int(st.median(precios))),
+            _M(int(st.mean(precios))),
+            _M(int(min(precios))),
+            _M(int(max(precios))),
+            f"${st.median(pm2s):,.0f}",
+            f"{st.mean(m2s):.0f} m²",
+            f"{st.median(scores):.1f}",
+            Text(f"{high_cnt}", style="bright_green bold" if high_cnt else "dim"),
+        )
+    console.print(t_tipo)
+
+    # ── Por comuna ───────────────────────────────────────────────────────────
+    console.rule("[bold cyan]ANÁLISIS POR COMUNA[/bold cyan]", style="dim")
+
+    comunas_data: dict[str, list] = {}
+    for s in valid:
+        comunas_data.setdefault(s["comuna"], []).append(s)
+
+    t_com = Table(box=box.SIMPLE_HEAVY, header_style="bold cyan", border_style="dim", padding=(0, 1))
+    t_com.add_column("Comuna",        width=16)
+    t_com.add_column("N",             justify="right", width=5)
+    t_com.add_column("P. Mediana",    justify="right", width=14)
+    t_com.add_column("CLP/m² Med",    justify="right", width=12)
+    t_com.add_column("CLP/m² Min",    justify="right", width=12)
+    t_com.add_column("CLP/m² Max",    justify="right", width=12)
+    t_com.add_column("Score Med",     justify="right", width=10)
+    t_com.add_column("Score Max",     justify="right", width=10)
+    t_com.add_column("Días Med",      justify="right", width=9)
+    t_com.add_column("HIGH",          justify="right", width=6)
+    t_com.add_column("Dist.",         width=22)
+
+    for comuna, rows in sorted(comunas_data.items(), key=lambda x: -st.median(r["precio_m2"] for r in x[1])):
+        pm2s   = [r["precio_m2"] for r in rows]
+        precios= [r["precio"] for r in rows]
+        scores = [r["score"] for r in rows]
+        days   = [r.get("days_on_market") or 0 for r in rows]
+        high   = sum(1 for r in rows if r["score"] >= 75)
+        bar    = _bar(high, len(rows), 16)
+        t_com.add_row(
+            comuna,
+            str(len(rows)),
+            _M(int(st.median(precios))),
+            f"${st.median(pm2s):,.0f}",
+            f"${min(pm2s):,.0f}",
+            f"${max(pm2s):,.0f}",
+            f"{st.median(scores):.1f}",
+            Text(f"{max(scores):.1f}", style="bright_green bold"),
+            f"{st.median(days):.0f}d",
+            Text(str(high), style="bright_green" if high >= 2 else "dim"),
+            f"[green]{bar}[/green]",
+        )
+    console.print(t_com)
+
+    # ── Distribución de scores ───────────────────────────────────────────────
+    console.rule("[bold cyan]DISTRIBUCIÓN DE SCORES[/bold cyan]", style="dim")
+
+    bands = [(90, 100, "90-100", "bright_green"),
+             (80, 90,  "80-89",  "green"),
+             (70, 80,  "70-79",  "yellow"),
+             (60, 70,  "60-69",  "yellow"),
+             (0,  60,  "< 60",   "dim")]
+
+    t_dist = Table(box=box.SIMPLE, show_header=False, padding=(0, 1), border_style="dim")
+    t_dist.add_column("band",  width=8)
+    t_dist.add_column("count", justify="right", width=6)
+    t_dist.add_column("bar",   width=40)
+    t_dist.add_column("pct",   justify="right", width=7)
+    t_dist.add_column("hint",  style="dim")
+
+    hints = {
+        "90-100": "Compra inmediata — precio + tiempo + reducción excepcionales",
+        "80-89":  "Alta prioridad — visita esta semana",
+        "70-79":  "Oportunidad sólida — monitorear de cerca",
+        "60-69":  "Interesante — evaluar según criterios propios",
+        "< 60":   "Precio de mercado o superior — sin ventaja clara",
+    }
+    for lo, hi, label, color in bands:
+        cnt = sum(1 for s in valid if lo <= s["score"] < hi) if lo > 0 else sum(1 for s in valid if s["score"] < hi)
+        bar = _bar(cnt, len(valid), 35)
+        pct = cnt / len(valid) * 100
+        t_dist.add_row(
+            Text(label, style=f"bold {color}"),
+            str(cnt),
+            Text(bar, style=color),
+            f"{pct:.0f}%",
+            hints[label],
+        )
+    console.print(t_dist)
+
+    # ── Top vendedores motivados ─────────────────────────────────────────────
+    console.rule("[bold cyan]TOP VENDEDORES MOTIVADOS — Mayor Reducción de Precio[/bold cyan]", style="dim")
+
+    with_red = [
+        s for s in valid
+        if s.get("precio_inicial") and s["precio_inicial"] > s["precio"]
+    ]
+    with_red.sort(key=lambda s: (s["precio"] / s["precio_inicial"]))
+
+    t_red = Table(box=box.SIMPLE_HEAVY, header_style="bold cyan", border_style="dim", padding=(0, 1))
+    t_red.add_column("Comuna",      width=14)
+    t_red.add_column("Tipo",        width=10)
+    t_red.add_column("Precio Orig", justify="right", width=13)
+    t_red.add_column("Precio Act",  justify="right", width=13)
+    t_red.add_column("Reducción",   justify="right", width=11)
+    t_red.add_column("Ahorro",      justify="right", width=12)
+    t_red.add_column("CLP/m²",      justify="right", width=12)
+    t_red.add_column("m²",          justify="right", width=6)
+    t_red.add_column("Score",       justify="right", width=7)
+    t_red.add_column("Días",        justify="right", width=6)
+
+    for s in with_red[:12]:
+        red_pct = (1 - s["precio"] / s["precio_inicial"]) * 100
+        ahorro  = s["precio_inicial"] - s["precio"]
+        tipo_short = {"departamento": "Departamento", "casa": "Casa", "terreno": "Terreno"}.get(s["tipo_propiedad"], s["tipo_propiedad"])
+        t_red.add_row(
+            s["comuna"],
+            tipo_short,
+            _M(s["precio_inicial"]),
+            _M(s["precio"]),
+            Text(f"-{red_pct:.1f}%", style="bright_green bold"),
+            Text(f"{_M(ahorro)}", style="green"),
+            f"${s['precio_m2']:,.0f}",
+            f"{s['m2']:.0f}",
+            Text(f"{s['score']:.1f}", style="bright_green" if s["score"] >= 75 else "yellow"),
+            str(s.get("days_on_market") or "—"),
+        )
+    console.print(t_red)
+
+    # ── Inventario estancado (tiempo en mercado) ─────────────────────────────
+    console.rule("[bold cyan]INVENTARIO ESTANCADO — Tiempo en Mercado[/bold cyan]", style="dim")
+
+    stale_bands = [(120, 1e9, "+120 días", "bright_red"),
+                   (90, 120,  "90-120d",   "red"),
+                   (60, 90,   "60-90d",    "yellow"),
+                   (30, 60,   "30-60d",    "white"),
+                   (0,  30,   "< 30 días", "dim")]
+
+    t_stale = Table(box=box.SIMPLE, show_header=False, padding=(0, 1), border_style="dim")
+    t_stale.add_column("band",  width=11)
+    t_stale.add_column("count", justify="right", width=6)
+    t_stale.add_column("bar",   width=30)
+    t_stale.add_column("pct",   justify="right", width=7)
+    t_stale.add_column("avg_score", justify="right", width=10)
+    t_stale.add_column("hint",  style="dim")
+
+    stale_hints = {
+        "+120 días": "Vendedor muy motivado — máxima palanca de negociación",
+        "90-120d":   "Urgencia alta — considerar oferta 10-15% bajo precio",
+        "60-90d":    "Señal media — explorar razones de estancamiento",
+        "30-60d":    "Normal — poco margen de negociación aún",
+        "< 30 días": "Fresco — precio firme, poco espacio de oferta",
+    }
+    days_all = [s.get("days_on_market") or 0 for s in valid]
+    for lo, hi, label, color in stale_bands:
+        band_rows = [s for s in valid if lo <= (s.get("days_on_market") or 0) < hi]
+        cnt = len(band_rows)
+        avg_s = st.mean(r["score"] for r in band_rows) if band_rows else 0
+        bar = _bar(cnt, len(valid), 25)
+        t_stale.add_row(
+            Text(label, style=f"bold {color}"),
+            str(cnt),
+            Text(bar, style=color),
+            f"{cnt/len(valid)*100:.0f}%",
+            f"score {avg_s:.1f}" if band_rows else "—",
+            stale_hints[label],
+        )
+    console.print(t_stale)
+
+    # ── Análisis por corredor ────────────────────────────────────────────────
+    console.rule("[bold cyan]ANÁLISIS POR CORREDOR (LÍNEA DE METRO)[/bold cyan]", style="dim")
+
+    corredores = {
+        "Línea 7 — Premium":   ["Vitacura", "Las Condes", "Lo Barnechea"],
+        "Línea 1 — Central":   ["Providencia", "Santiago", "Ñuñoa"],
+        "Línea 8 — Sur":       ["Puente Alto", "La Florida", "Peñalolén"],
+        "Expansión":           ["La Reina", "Maipú", "San Miguel", "Colina", "Lampa"],
+    }
+
+    t_corr = Table(box=box.SIMPLE_HEAVY, header_style="bold cyan", border_style="dim", padding=(0, 1))
+    t_corr.add_column("Corredor",    width=22)
+    t_corr.add_column("Props",       justify="right", width=7)
+    t_corr.add_column("P. Med",      justify="right", width=13)
+    t_corr.add_column("CLP/m² Med",  justify="right", width=13)
+    t_corr.add_column("Score Med",   justify="right", width=10)
+    t_corr.add_column("Score Max",   justify="right", width=10)
+    t_corr.add_column("HIGH ops",    justify="right", width=10)
+    t_corr.add_column("Días Med",    justify="right", width=9)
+    t_corr.add_column("Comunas",     style="dim")
+
+    for corredor, comunas in corredores.items():
+        rows = [s for s in valid if s["comuna"] in comunas]
+        if not rows:
+            continue
+        precios = [r["precio"] for r in rows]
+        pm2s    = [r["precio_m2"] for r in rows]
+        scores  = [r["score"] for r in rows]
+        days    = [r.get("days_on_market") or 0 for r in rows]
+        high    = sum(1 for r in rows if r["score"] >= 75)
+        t_corr.add_row(
+            f"[bold]{corredor}[/bold]",
+            str(len(rows)),
+            _M(int(st.median(precios))),
+            f"${st.median(pm2s):,.0f}",
+            f"{st.median(scores):.1f}",
+            Text(f"{max(scores):.1f}", style="bright_green bold"),
+            Text(str(high), style="bright_green bold" if high >= 2 else "dim"),
+            f"{st.median(days):.0f}d",
+            ", ".join(comunas),
+        )
+    console.print(t_corr)
+
+    # ── Top 5 oportunidades absolutas ───────────────────────────────────────
+    console.rule("[bold cyan]TOP 5 OPORTUNIDADES — Compra Inmediata[/bold cyan]", style="dim")
+
+    top5 = sorted(valid, key=lambda x: x["score"], reverse=True)[:5]
+    for i, s in enumerate(top5, 1):
+        median = s.get("corridor_median_m2") or s["precio_m2"]
+        vs_med = ((s["precio_m2"] / median) - 1) * 100
+        red_pct = 0.0
+        if s.get("precio_inicial") and s["precio_inicial"] > s["precio"]:
+            red_pct = (1 - s["precio"] / s["precio_inicial"]) * 100
+        dorm = s.get("dormitorios")
+        banos = s.get("banos")
+        db = f"{dorm}d/{banos}b" if dorm and banos else "—"
+
+        console.print(Panel(
+            f"[bold white]{s['comuna']}[/bold white] · "
+            f"[cyan]{s['tipo_propiedad'].capitalize()}[/cyan] · "
+            f"{s['m2']:.0f} m²  ·  {db}\n"
+            f"[bright_green bold]{_M(s['precio'])}[/bright_green bold]  "
+            f"([dim]{_UF_val(s['precio'])}[/dim])  ·  "
+            f"${s['precio_m2']:,.0f}/m²  ·  "
+            f"[bright_green]{_pct(vs_med)} vs mediana corredor[/bright_green]\n"
+            f"Score: [bold bright_green]{s['score']:.1f}/100[/bold bright_green]  ·  "
+            f"Días en mercado: [yellow]{s.get('days_on_market') or '—'}[/yellow]"
+            + (f"  ·  Reducción: [bright_green]-{red_pct:.1f}%[/bright_green]" if red_pct > 0 else "")
+            + f"\n[dim]{s.get('url', '')}[/dim]",
+            title=f"[bold cyan]#{i}[/bold cyan]",
+            border_style="cyan",
+            expand=False,
+            width=100,
+        ))
+
+    console.print(f"\n[dim]  Metodología: precio/m² vs mediana corredor (55%) · tiempo mercado (30%) · reducción precio (15%)[/dim]")
+    console.print(f"[dim]  Datos: Portal Inmobiliario · UF = ${_UF:,} CLP · {now}[/dim]\n")
+
+
+# ---------------------------------------------------------------------------
 # Main command: --top20
 # ---------------------------------------------------------------------------
 
 
-async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: bool = False) -> None:
+async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: bool = False, report: bool = False) -> None:
     from rich.console import Console
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
@@ -485,6 +841,8 @@ async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: b
             reverse=True,
         )[:20]
         print(json.dumps(top, indent=2, default=str, ensure_ascii=False))
+    elif report:
+        _print_report(scored, listings_total=len(unique))
     else:
         _print_top20(scored)
 
@@ -497,7 +855,7 @@ async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: b
 def main() -> None:
     args = _parse_args()
 
-    if not args.top20:
+    if not args.top20 and not args.report:
         print(__doc__)
         sys.exit(0)
 
@@ -506,6 +864,7 @@ def main() -> None:
         max_pages=args.pages,
         output_json=args.output_json,
         demo=args.demo,
+        report=args.report,
     ))
 
 
