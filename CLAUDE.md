@@ -102,6 +102,7 @@ python run.py --top20 --demo
 python run.py --report --demo
 python run.py --invest --demo
 python run.py --html --demo
+python run.py --dashboard --demo        # ← nuevo: dashboard interactivo HTML
 python run.py --corredor --demo
 python run.py --corredor --zona "Lampa,Quilicura" --demo
 python run.py --subscription-preview --demo
@@ -171,6 +172,15 @@ Con datos SII: `precio_m2 (40%) + delta_fiscal (30%) + tiempo_mercado (20%) + re
 - Columna **Flags** con badges coloreados en tabla `--top20`
 - Tabla de liquidez comunal hardcoded (Las Condes 85 → Batuco 38)
 
+### [COMPLETADO] Refinamientos sesión 2
+
+- **UF actualizado**: 38,500 → 40,100 CLP (Mayo 2026) en todos los puntos de run.py
+- **`--dashboard` flag**: HTML interactivo self-contained (~44KB) con filtros JS en tiempo real
+  - Tipo (Depto/Casa/Terreno), corredor (Premium/Consolidado/Periurbano), score mínimo slider
+  - Badge toggles URGENTE/FLIP/LOTEO, sort por score/precio/días, reset con un click
+  - Cards coloreadas por tier de score, KPI header global, contador dinámico
+- **Liquidez comunal dinámica**: `_compute_commune_liquidity()` calcula días-en-mercado (50%) + tier de precio vs mediana RM (50%) por cada comuna desde los datos reales; fallback estático si < 3 observaciones
+
 ### [COMPLETADO] Módulo 3 — Export para corredores
 - `python run.py --corredor [--zona "Lampa,Quilicura"]`
   - Tabla Rich top-15 con columnas Urgente/Flip
@@ -204,7 +214,7 @@ Clases de test:
 ## Constantes clave
 
 ```python
-_UF        = 38_500        # CLP por UF (actualizar periódicamente)
+_UF        = 40_100        # CLP por UF (actualizado Mayo 2026)
 FUND_CLP   = 5_000_000_000 # Fondo objetivo CLP 5,000M
 HOLD_YEARS = 5             # Horizonte de inversión
 HURDLE     = 0.08          # Hurdle rate anual en UF
@@ -235,12 +245,12 @@ Especificaciones de los módulos implementados en esta sesión (referencia para 
 - Score `potencial_loteo_score` usando mediana dinámica por comuna (actualmente usa corridor_median * 10000)
 
 ### Módulo 2 — Urgency + Flip filter (refinamiento)
-- Tabla de liquidez comunal dinámica (actualmente hardcoded en `_score_listing`)
+- ~~Tabla de liquidez comunal dinámica (actualmente hardcoded en `_score_listing`)~~ ✓ **COMPLETADO** (`_compute_commune_liquidity`)
 - Integrar `precio_vs_avaluo_ratio` real desde SII lookup cuando disponible
 - Backtesting de señales urgency/flip vs velocidad de venta histórica
 
 ### Módulo 3 — Export para corredores (refinamiento)
-- Dashboard web (HTML interactivo) con filtros por zona y tipo
+- ~~Dashboard web (HTML interactivo) con filtros por zona y tipo~~ ✓ **COMPLETADO** (`--dashboard`)
 - Alertas automáticas Telegram/Email cuando score ≥ 85
 - Scheduler semanal para generar y enviar digest automáticamente
 - Histórico de precios por corredor (requiere DB)

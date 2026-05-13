@@ -52,7 +52,8 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--json", action="store_true", dest="output_json", help="Output raw JSON")
     p.add_argument("--report", action="store_true", help="Full financial market report (all metrics)")
     p.add_argument("--invest", action="store_true", help="CFO-grade investment memo for fund presentation")
-    p.add_argument("--html",   action="store_true", help="Export investment memo as self-contained HTML (opens in browser)")
+    p.add_argument("--html",      action="store_true", help="Export investment memo as self-contained HTML (opens in browser)")
+    p.add_argument("--dashboard", action="store_true", help="Export interactive HTML dashboard with JS filters (tipo, zona, score, badges)")
     p.add_argument(
         "--demo",
         action="store_true",
@@ -117,11 +118,65 @@ def _find_median(
 
 
 # ---------------------------------------------------------------------------
+# Dynamic commune liquidity
+# ---------------------------------------------------------------------------
+
+
+def _compute_commune_liquidity(listings: list[dict]) -> dict[str, float]:
+    """
+    Compute liquidity score (0–100) per commune from observed data.
+    Blends days-on-market speed (50%) and price tier vs RM median (50%).
+    Communes with < 3 observations get 50 (neutral).
+    """
+    comm_days: dict[str, list[float]] = defaultdict(list)
+    comm_pm2: dict[str, list[float]] = defaultdict(list)
+
+    for item in listings:
+        c = item.get("comuna", "")
+        if not c:
+            continue
+        pub = item.get("fecha_publicacion")
+        if pub:
+            try:
+                if isinstance(pub, str):
+                    pub_dt = datetime.fromisoformat(pub.replace("Z", "+00:00"))
+                else:
+                    pub_dt = pub
+                comm_days[c].append(float(max(0, (datetime.now(timezone.utc) - pub_dt).days)))
+            except Exception:
+                pass
+        if item.get("precio_m2"):
+            comm_pm2[c].append(float(item["precio_m2"]))
+
+    all_pm2 = [v for vals in comm_pm2.values() for v in vals]
+    global_med = statistics.median(all_pm2) if all_pm2 else 1.0
+
+    result: dict[str, float] = {}
+    for commune in set(comm_days) | set(comm_pm2):
+        days_list = comm_days.get(commune, [])
+        pm2_list  = comm_pm2.get(commune, [])
+
+        # days-on-market score: 0d→100, 120d→30
+        dias_score = (
+            max(20.0, 100.0 - statistics.mean(days_list) * 0.583)
+            if len(days_list) >= 3 else 50.0
+        )
+        # price-tier score: at global median→50, 2× median→90, 0.5× median→25
+        price_score = (
+            min(90.0, max(25.0, 25.0 + (statistics.median(pm2_list) / global_med) * 32.5))
+            if len(pm2_list) >= 3 else 50.0
+        )
+        result[commune] = round(dias_score * 0.5 + price_score * 0.5, 1)
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # In-memory scoring
 # ---------------------------------------------------------------------------
 
 
-def _score_listing(item: dict, medians: dict[tuple, float]) -> dict:
+def _score_listing(item: dict, medians: dict[tuple, float], commune_liq: Optional[dict[str, float]] = None) -> dict:
     """Compute score and inject sub-scores back into item dict."""
     from scoring.engine import compute_score
 
@@ -168,17 +223,18 @@ def _score_listing(item: dict, medians: dict[tuple, float]) -> dict:
         red_pct = (item["precio_inicial"] - item["precio"]) / item["precio_inicial"]
     item["urgency_score"] = _urgency_score(days_on_market=days or 0, reduccion_pct=red_pct)
 
-    # flip_score
+    # flip_score — use dynamic liquidity if provided, else fall back to static estimates
     upside = ((median / item["precio_m2"]) - 1) * 100 if median else 0.0
-    _COMMUNE_LIQ: dict[str, float] = {
+    _STATIC_LIQ: dict[str, float] = {
         "Las Condes": 85, "Vitacura": 82, "Providencia": 80, "Lo Barnechea": 75,
         "Ñuñoa": 72, "La Reina": 70, "Santiago": 68, "Maipú": 55,
         "La Florida": 58, "San Miguel": 62, "Peñalolén": 50, "Puente Alto": 48,
         "Quilicura": 52, "Colina": 45, "Lampa": 42, "Buin": 40,
     }
+    liq_table = commune_liq if commune_liq else _STATIC_LIQ
     item["flip_score"] = _flip_score(
         upside_pct=upside,
-        commune_liquidity=_COMMUNE_LIQ.get(item["comuna"], 50.0),
+        commune_liquidity=liq_table.get(item["comuna"], 50.0),
     )
 
     # potencial_loteo_score for terrenos
@@ -354,7 +410,7 @@ def _demo_listings() -> list[dict]:
     ~120 synthetic listings representative of the RM market (May 2026).
     Prices from portalinmobiliario.com search history; UF ≈ 38,500 CLP.
     """
-    _UF = 38_500
+    _UF = 40_100
     raw = [
         # (tipo, comuna, m2, precio_uf, dormitorios, banos, dias_publicado, reduccion_pct)
         ("departamento", "Las Condes",   58, 4_800, 2, 2, 5,  0.00),
@@ -488,7 +544,7 @@ def _print_report(scored: list[dict], listings_total: int) -> None:
 
     console = Console(width=max(160, Console().width))
     now = datetime.now().strftime("%d/%m/%Y %H:%M")
-    _UF = 38_500
+    _UF = 40_100
 
     valid = [s for s in scored if s.get("score") is not None]
     all_prices = [s["precio"] for s in valid]
@@ -843,7 +899,7 @@ def _print_invest(scored: list[dict], listings_total: int) -> None:
     console  = Console(width=max(175, Console().width))
     now      = datetime.now().strftime("%d/%m/%Y %H:%M")
     fecha_l  = datetime.now().strftime("%d de %B de %Y")
-    _UF      = 38_500
+    _UF      = 40_100
     FUND_CLP = 5_000_000_000   # CLP 5,000 M ≈ UF 130k
 
     valid   = [s for s in scored if s.get("score") is not None]
@@ -1508,7 +1564,7 @@ def _generate_html(scored: list[dict], listings_total: int) -> str:
     import statistics as st
     from pathlib import Path
 
-    _UF      = 38_500
+    _UF      = 40_100
     FUND_CLP = 5_000_000_000
     now      = datetime.now().strftime("%d/%m/%Y %H:%M")
     fecha_l  = datetime.now().strftime("%d de %B de %Y")
@@ -2119,6 +2175,448 @@ tr:hover td{{background:var(--bg3)}}
 
 
 # ---------------------------------------------------------------------------
+# Interactive Dashboard HTML — --dashboard
+# ---------------------------------------------------------------------------
+
+
+def _generate_dashboard_html(scored: list[dict], listings_total: int) -> str:
+    """Generate a self-contained interactive HTML dashboard for daily corredor use."""
+    import json as _json
+    import statistics as st
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    _UF = 40_100
+
+    valid = [s for s in scored if s.get("score") is not None]
+    valid_sorted = sorted(valid, key=lambda x: x["score"], reverse=True)
+
+    # ── pre-compute global KPIs ─────────────────────────────────────────────
+    prices_m2    = [s["precio_m2"] for s in valid]
+    med_pm2      = st.median(prices_m2) if prices_m2 else 0
+    avg_score    = st.mean(s["score"] for s in valid) if valid else 0
+    pct_below    = 100 * sum(1 for s in valid if s.get("vs_median_pct", 0) < 0) / len(valid) if valid else 0
+    n_urgente    = sum(1 for s in valid if (s.get("urgency_score") or 0) >= 60)
+    n_flip       = sum(1 for s in valid if (s.get("flip_score") or 0) >= 65)
+    n_loteo      = sum(1 for s in valid if (s.get("potencial_loteo_score") or 0) >= 65)
+
+    # ── serialize listings for JS ────────────────────────────────────────────
+    def _serializable(s: dict) -> dict:
+        tipo  = s.get("tipo_propiedad", "")
+        score = round(s.get("score") or 0, 1)
+        vm    = round(s.get("vs_median_pct") or 0, 1)
+        urg   = round(s.get("urgency_score") or 0, 1)
+        flip  = round(s.get("flip_score") or 0, 1)
+        loteo = round(s.get("potencial_loteo_score") or 0, 1)
+        dias  = s.get("dias_mercado") or 0
+        p_m2  = round(s.get("precio_m2") or 0, 0)
+        p_uf  = round(s.get("precio") / _UF, 1) if s.get("precio") else 0
+
+        # corredor group
+        corredor_map = {
+            "Las Condes": "Premium", "Vitacura": "Premium", "Providencia": "Premium",
+            "Lo Barnechea": "Premium", "La Reina": "Premium",
+            "Ñuñoa": "Consolidado", "Santiago": "Consolidado", "San Miguel": "Consolidado",
+            "La Florida": "Consolidado", "Maipú": "Consolidado", "Peñalolén": "Consolidado",
+            "Puente Alto": "Consolidado",
+            "Quilicura": "Periurbano", "Colina": "Periurbano", "Lampa": "Periurbano",
+            "Buin": "Periurbano", "Paine": "Periurbano", "Batuco": "Periurbano",
+        }
+        corredor = corredor_map.get(s.get("comuna", ""), "Otro")
+
+        return {
+            "id":       s.get("external_id", ""),
+            "tipo":     tipo,
+            "comuna":   s.get("comuna", "—"),
+            "corredor": corredor,
+            "address":  s.get("address", ""),
+            "precio":   s.get("precio", 0),
+            "precio_uf": p_uf,
+            "precio_m2": int(p_m2),
+            "m2":       s.get("m2", 0),
+            "dorm":     s.get("dormitorios"),
+            "banos":    s.get("banos"),
+            "dias":     dias,
+            "red_pct":  round((s.get("reduccion_precio_pct") or 0) * 100, 1),
+            "score":    score,
+            "vm":       vm,
+            "urgente":  urg >= 60,
+            "flip":     flip >= 65,
+            "loteo":    loteo >= 65,
+            "urg_val":  urg,
+            "flip_val": flip,
+            "lot_val":  loteo,
+            "url":      s.get("url", "#"),
+        }
+
+    data_js = _json.dumps([_serializable(s) for s in valid_sorted], ensure_ascii=False)
+    now_str = datetime.now(timezone.utc).strftime("%d %b %Y %H:%M UTC")
+
+    def _M(v: int) -> str:
+        if v >= 1_000_000_000:
+            return f"${v/1_000_000_000:.2f}B"
+        if v >= 1_000_000:
+            return f"${v/1_000_000:.1f}M"
+        return f"${v:,.0f}"
+
+    html = f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>REI Dashboard — Portal Inmobiliario RM · {now_str}</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;min-height:100vh}}
+a{{color:#58a6ff;text-decoration:none}}
+a:hover{{text-decoration:underline}}
+
+/* ── header ── */
+#hdr{{background:linear-gradient(135deg,#161b22 0%,#0d1117 100%);border-bottom:1px solid #30363d;padding:18px 24px 14px}}
+#hdr h1{{font-size:20px;font-weight:700;color:#f0f6fc;letter-spacing:.3px}}
+#hdr .sub{{color:#8b949e;font-size:12px;margin-top:3px}}
+
+/* ── KPI bar ── */
+#kpis{{display:flex;gap:20px;margin-top:14px;flex-wrap:wrap}}
+.kpi{{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:10px 16px;min-width:120px}}
+.kpi-val{{font-size:22px;font-weight:700;color:#f0f6fc}}
+.kpi-lbl{{font-size:11px;color:#8b949e;margin-top:2px;text-transform:uppercase;letter-spacing:.5px}}
+.kpi-val.green{{color:#3fb950}}
+.kpi-val.yellow{{color:#d29922}}
+.kpi-val.orange{{color:#f0883e}}
+.kpi-val.red{{color:#f85149}}
+
+/* ── filter bar ── */
+#filters{{background:#161b22;border-bottom:1px solid #30363d;padding:12px 24px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;position:sticky;top:0;z-index:100}}
+.fgroup{{display:flex;flex-direction:column;gap:4px}}
+.flabel{{font-size:10px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;font-weight:600}}
+.frow{{display:flex;gap:6px;align-items:center}}
+
+/* checkboxes as pills */
+.pill{{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid #30363d;background:#0d1117;cursor:pointer;font-size:12px;color:#8b949e;transition:all .15s;user-select:none}}
+.pill:hover{{border-color:#58a6ff;color:#58a6ff}}
+.pill.active{{background:#1f6feb;border-color:#388bfd;color:#f0f6fc;font-weight:600}}
+.pill input{{display:none}}
+
+/* select */
+select{{background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;padding:5px 8px;font-size:12px;cursor:pointer;outline:none}}
+select:focus{{border-color:#58a6ff}}
+
+/* slider */
+.slider-wrap{{display:flex;align-items:center;gap:8px}}
+input[type=range]{{-webkit-appearance:none;width:110px;height:4px;background:#30363d;border-radius:2px;outline:none}}
+input[type=range]::-webkit-slider-thumb{{-webkit-appearance:none;width:14px;height:14px;background:#58a6ff;border-radius:50%;cursor:pointer}}
+.slider-val{{font-size:12px;color:#f0f6fc;min-width:24px;text-align:center;font-weight:600}}
+
+/* sort buttons */
+.sort-btn{{padding:4px 10px;border-radius:6px;border:1px solid #30363d;background:#0d1117;color:#8b949e;font-size:12px;cursor:pointer;transition:all .15s}}
+.sort-btn:hover,.sort-btn.active{{background:#21262d;border-color:#58a6ff;color:#f0f6fc}}
+
+/* badge toggle buttons */
+.badge-toggle{{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid;transition:all .15s;opacity:.5}}
+.badge-toggle:hover{{opacity:.8}}
+.badge-toggle.active{{opacity:1}}
+.bt-urg{{color:#f85149;border-color:#f85149}}
+.bt-urg.active{{background:rgba(248,81,73,.15)}}
+.bt-flip{{color:#3fb950;border-color:#3fb950}}
+.bt-flip.active{{background:rgba(63,185,80,.15)}}
+.bt-lot{{color:#d29922;border-color:#d29922}}
+.bt-lot.active{{background:rgba(210,153,34,.15)}}
+
+/* ── count bar ── */
+#cbar{{padding:8px 24px;background:#0d1117;border-bottom:1px solid #21262d;font-size:12px;color:#8b949e}}
+#cbar span{{color:#f0f6fc;font-weight:600}}
+
+/* ── grid ── */
+#grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;padding:18px 24px 40px}}
+
+/* ── card ── */
+.card{{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:14px;transition:border-color .15s;position:relative;overflow:hidden}}
+.card:hover{{border-color:#58a6ff}}
+.card::before{{content:'';position:absolute;top:0;left:0;right:0;height:3px}}
+.card.score-hi::before{{background:linear-gradient(90deg,#238636,#3fb950)}}
+.card.score-md::before{{background:linear-gradient(90deg,#9e6a03,#d29922)}}
+.card.score-lo::before{{background:linear-gradient(90deg,#6e1004,#f85149)}}
+
+.card-top{{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}}
+.card-tipo{{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#8b949e;font-weight:600}}
+.score-badge{{font-size:18px;font-weight:800;padding:2px 8px;border-radius:6px}}
+.score-badge.hi{{color:#3fb950;background:rgba(63,185,80,.12)}}
+.score-badge.md{{color:#d29922;background:rgba(210,153,34,.12)}}
+.score-badge.lo{{color:#f85149;background:rgba(248,81,73,.12)}}
+
+.card-comuna{{font-size:15px;font-weight:700;color:#f0f6fc;margin-bottom:2px}}
+.card-addr{{font-size:11px;color:#8b949e;margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+
+.metrics{{display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;margin-bottom:10px}}
+.met{{display:flex;flex-direction:column}}
+.met-val{{font-size:13px;font-weight:600;color:#f0f6fc}}
+.met-lbl{{font-size:10px;color:#8b949e}}
+
+.vm-pos{{color:#f85149}}
+.vm-neg{{color:#3fb950}}
+
+.flags{{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px}}
+.flag{{font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;letter-spacing:.4px}}
+.flag-urg{{background:rgba(248,81,73,.2);color:#f85149;border:1px solid rgba(248,81,73,.4)}}
+.flag-flip{{background:rgba(63,185,80,.2);color:#3fb950;border:1px solid rgba(63,185,80,.4)}}
+.flag-lot{{background:rgba(210,153,34,.2);color:#d29922;border:1px solid rgba(210,153,34,.4)}}
+
+.card-footer{{display:flex;justify-content:space-between;align-items:center;border-top:1px solid #21262d;padding-top:8px;margin-top:4px}}
+.card-dias{{font-size:11px;color:#8b949e}}
+.card-link{{font-size:11px}}
+
+/* ── empty state ── */
+#empty{{display:none;text-align:center;padding:60px 24px;color:#8b949e}}
+#empty h3{{font-size:18px;color:#e6edf3;margin-bottom:8px}}
+
+/* ── footer ── */
+#footer{{text-align:center;padding:20px;font-size:11px;color:#484f58;border-top:1px solid #21262d}}
+
+@media(max-width:600px){{
+  #kpis{{gap:10px}}
+  .kpi{{min-width:90px;padding:8px 12px}}
+  #filters{{gap:10px}}
+  #grid{{grid-template-columns:1fr;gap:10px;padding:12px}}
+}}
+</style>
+</head>
+<body>
+
+<div id="hdr">
+  <h1>REI Intelligence Dashboard</h1>
+  <div class="sub">Portal Inmobiliario · Región Metropolitana · {now_str} · {listings_total:,} listings analizados</div>
+  <div id="kpis">
+    <div class="kpi"><div class="kpi-val" id="kpi-vis">{len(valid):,}</div><div class="kpi-lbl">Propiedades</div></div>
+    <div class="kpi"><div class="kpi-val green">{avg_score:.0f}</div><div class="kpi-lbl">Score Promedio</div></div>
+    <div class="kpi"><div class="kpi-val">{int(med_pm2/1000):,}K</div><div class="kpi-lbl">Mediana $/m²</div></div>
+    <div class="kpi"><div class="kpi-val yellow">{pct_below:.0f}%</div><div class="kpi-lbl">Bajo Mediana</div></div>
+    <div class="kpi"><div class="kpi-val red">{n_urgente}</div><div class="kpi-lbl">Urgentes</div></div>
+    <div class="kpi"><div class="kpi-val green">{n_flip}</div><div class="kpi-lbl">Flip</div></div>
+    <div class="kpi"><div class="kpi-val orange">{n_loteo}</div><div class="kpi-lbl">Loteo</div></div>
+  </div>
+</div>
+
+<div id="filters">
+  <div class="fgroup">
+    <div class="flabel">Tipo</div>
+    <div class="frow" id="tipo-pills">
+      <label class="pill active" data-tipo="departamento"><input type="checkbox" checked> Depto</label>
+      <label class="pill active" data-tipo="casa"><input type="checkbox" checked> Casa</label>
+      <label class="pill active" data-tipo="terreno"><input type="checkbox" checked> Terreno</label>
+    </div>
+  </div>
+  <div class="fgroup">
+    <div class="flabel">Corredor</div>
+    <div class="frow">
+      <select id="corredor-sel">
+        <option value="">Todos</option>
+        <option value="Premium">Premium</option>
+        <option value="Consolidado">Consolidado</option>
+        <option value="Periurbano">Periurbano</option>
+      </select>
+    </div>
+  </div>
+  <div class="fgroup">
+    <div class="flabel">Score mínimo</div>
+    <div class="frow slider-wrap">
+      <input type="range" id="score-slider" min="0" max="100" value="0">
+      <div class="slider-val" id="score-val">0</div>
+    </div>
+  </div>
+  <div class="fgroup">
+    <div class="flabel">Señales</div>
+    <div class="frow" id="badge-toggles">
+      <button class="badge-toggle bt-urg" data-flag="urgente">URGENTE</button>
+      <button class="badge-toggle bt-flip" data-flag="flip">FLIP</button>
+      <button class="badge-toggle bt-lot" data-flag="loteo">LOTEO</button>
+    </div>
+  </div>
+  <div class="fgroup">
+    <div class="flabel">Ordenar</div>
+    <div class="frow" id="sort-btns">
+      <button class="sort-btn active" data-sort="score">Score ↓</button>
+      <button class="sort-btn" data-sort="precio_asc">Precio ↑</button>
+      <button class="sort-btn" data-sort="precio_desc">Precio ↓</button>
+      <button class="sort-btn" data-sort="dias">Días ↑</button>
+    </div>
+  </div>
+  <div class="fgroup">
+    <div class="flabel">&nbsp;</div>
+    <div class="frow">
+      <button class="sort-btn" id="reset-btn">↺ Reset</button>
+    </div>
+  </div>
+</div>
+
+<div id="cbar">Mostrando <span id="cnt">0</span> de <span id="total">{len(valid)}</span> propiedades</div>
+<div id="grid"></div>
+<div id="empty"><h3>Sin resultados</h3><p>Ajusta los filtros para ver propiedades.</p></div>
+<div id="footer">Real Estate Intelligence Agent · Portal Inmobiliario RM · Metodología: precio/m² vs mediana corredor (55%) · tiempo mercado (30%) · reducción precio (15%) · UF = $40,100 CLP</div>
+
+<script>
+const DATA = {data_js};
+
+// ── state ────────────────────────────────────────────────────────────────
+let tipos = new Set(['departamento','casa','terreno']);
+let corredor = '';
+let minScore = 0;
+let flagFilters = new Set(); // 'urgente','flip','loteo'
+let sortKey = 'score';
+
+// ── helpers ──────────────────────────────────────────────────────────────
+function fmtM(v){{
+  if(v>=1e9) return '$'+( v/1e9).toFixed(2)+'B';
+  if(v>=1e6) return '$'+(v/1e6).toFixed(1)+'M';
+  if(v>=1e3) return '$'+(v/1e3).toFixed(0)+'K';
+  return '$'+v;
+}}
+function fmtNum(v){{return new Intl.NumberFormat('es-CL').format(v);}}
+function scoreClass(s){{return s>=70?'hi':s>=50?'md':'lo';}}
+function badgeClass(s){{return s>=70?'score-badge hi':s>=50?'score-badge md':'score-badge lo';}}
+function cardClass(s){{return s>=70?'card score-hi':s>=50?'card score-md':'card score-lo';}}
+function vmClass(v){{return v>0?'vm-pos':'vm-neg';}}
+
+// ── filter + sort ─────────────────────────────────────────────────────────
+function applyFilters(){{
+  let data = DATA.filter(d => {{
+    if(!tipos.has(d.tipo)) return false;
+    if(corredor && d.corredor !== corredor) return false;
+    if(d.score < minScore) return false;
+    for(const f of flagFilters) if(!d[f]) return false;
+    return true;
+  }});
+
+  if(sortKey==='score')       data.sort((a,b)=>b.score-a.score);
+  else if(sortKey==='precio_asc')  data.sort((a,b)=>a.precio-b.precio);
+  else if(sortKey==='precio_desc') data.sort((a,b)=>b.precio-a.precio);
+  else if(sortKey==='dias')   data.sort((a,b)=>a.dias-b.dias);
+
+  return data;
+}}
+
+// ── render card ───────────────────────────────────────────────────────────
+function renderCard(d){{
+  const sc = scoreClass(d.score);
+  const vmStr = (d.vm>=0?'+':'')+d.vm.toFixed(1)+'%';
+  const vmCls = vmClass(d.vm);
+  const dormStr = d.dorm?`${{d.dorm}}d/${{d.banos||'–'}}b`:'—';
+  let flags = '';
+  if(d.urgente) flags += '<span class="flag flag-urg">URGENTE</span>';
+  if(d.flip)    flags += '<span class="flag flag-flip">FLIP</span>';
+  if(d.loteo)   flags += '<span class="flag flag-lot">LOTEO</span>';
+  const tipoLabel = {{departamento:'Departamento',casa:'Casa',terreno:'Terreno'}}[d.tipo]||d.tipo;
+  return `<div class="${{cardClass(d.score)}}">
+  <div class="card-top">
+    <div><div class="card-tipo">${{tipoLabel}} · ${{d.corredor}}</div></div>
+    <div class="${{badgeClass(d.score)}}">${{d.score.toFixed(0)}}</div>
+  </div>
+  <div class="card-comuna">${{d.comuna}}</div>
+  <div class="card-addr">${{d.address}}</div>
+  <div class="metrics">
+    <div class="met"><div class="met-val">UF ${{fmtNum(d.precio_uf)}}</div><div class="met-lbl">Precio</div></div>
+    <div class="met"><div class="met-val ${{vmCls}}">${{vmStr}}</div><div class="met-lbl">vs Mediana</div></div>
+    <div class="met"><div class="met-val">${{fmtNum(d.m2)}} m²</div><div class="met-lbl">Superficie</div></div>
+    <div class="met"><div class="met-val">${{fmtNum(d.precio_m2)}} $/m²</div><div class="met-lbl">Precio/m²</div></div>
+    ${{d.dorm?`<div class="met"><div class="met-val">${{dormStr}}</div><div class="met-lbl">Dorm/Baños</div></div>`:''}}
+    ${{d.red_pct>0?`<div class="met"><div class="met-val vm-neg">-${{d.red_pct.toFixed(1)}}%</div><div class="met-lbl">Reducción</div></div>`:''}}
+  </div>
+  ${{flags?`<div class="flags">${{flags}}</div>`:''}}
+  <div class="card-footer">
+    <div class="card-dias">${{d.dias}} días publicado</div>
+    <a class="card-link" href="${{d.url}}" target="_blank">Ver en Portal →</a>
+  </div>
+</div>`;
+}}
+
+// ── render grid ───────────────────────────────────────────────────────────
+function render(){{
+  const data = applyFilters();
+  const grid = document.getElementById('grid');
+  const empty = document.getElementById('empty');
+  document.getElementById('cnt').textContent = data.length;
+
+  if(data.length===0){{
+    grid.innerHTML='';
+    empty.style.display='block';
+    return;
+  }}
+  empty.style.display='none';
+  grid.innerHTML = data.map(renderCard).join('');
+}}
+
+// ── event wiring ──────────────────────────────────────────────────────────
+document.querySelectorAll('#tipo-pills .pill').forEach(pill=>{{
+  pill.addEventListener('click',()=>{{
+    const t = pill.dataset.tipo;
+    if(tipos.has(t)) tipos.delete(t);
+    else tipos.add(t);
+    pill.classList.toggle('active', tipos.has(t));
+    render();
+  }});
+}});
+
+document.getElementById('corredor-sel').addEventListener('change', e=>{{
+  corredor = e.target.value;
+  render();
+}});
+
+const slider = document.getElementById('score-slider');
+const sliderVal = document.getElementById('score-val');
+slider.addEventListener('input', ()=>{{
+  minScore = +slider.value;
+  sliderVal.textContent = slider.value;
+  render();
+}});
+
+document.querySelectorAll('#badge-toggles .badge-toggle').forEach(btn=>{{
+  btn.addEventListener('click',()=>{{
+    const f = btn.dataset.flag;
+    if(flagFilters.has(f)) flagFilters.delete(f);
+    else flagFilters.add(f);
+    btn.classList.toggle('active', flagFilters.has(f));
+    render();
+  }});
+}});
+
+document.querySelectorAll('#sort-btns .sort-btn').forEach(btn=>{{
+  btn.addEventListener('click',()=>{{
+    sortKey = btn.dataset.sort;
+    document.querySelectorAll('#sort-btns .sort-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    render();
+  }});
+}});
+
+document.getElementById('reset-btn').addEventListener('click',()=>{{
+  tipos = new Set(['departamento','casa','terreno']);
+  document.querySelectorAll('#tipo-pills .pill').forEach(p=>p.classList.add('active'));
+  corredor='';
+  document.getElementById('corredor-sel').value='';
+  minScore=0;
+  slider.value=0;
+  sliderVal.textContent='0';
+  flagFilters.clear();
+  document.querySelectorAll('.badge-toggle').forEach(b=>b.classList.remove('active'));
+  sortKey='score';
+  document.querySelectorAll('#sort-btns .sort-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelector('#sort-btns .sort-btn[data-sort="score"]').classList.add('active');
+  render();
+}});
+
+// ── initial render ────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>"""
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    out_path = Path(f"rei_dashboard_{ts}.html")
+    out_path.write_text(html, encoding="utf-8")
+    return str(out_path.resolve())
+
+
+# ---------------------------------------------------------------------------
 # Corredor export — Market Intelligence Report
 # ---------------------------------------------------------------------------
 
@@ -2134,7 +2632,7 @@ def _generate_corredor_pdf(
     from pathlib import Path
     import statistics as st
 
-    _UF = 38_500
+    _UF = 40_100
     now_str = datetime.now().strftime("%Y%m%d_%H%M")
     out_path = Path(f"market_intel_{now_str}.pdf")
 
@@ -2348,7 +2846,7 @@ def _print_corredor(scored: list[dict], listings_total: int, zona: str = "") -> 
     console = Console(width=max(160, Console().width))
     now = datetime.now().strftime("%d/%m/%Y %H:%M")
     fecha_l = datetime.now().strftime("%d de %B de %Y")
-    _UF = 38_500
+    _UF = 40_100
 
     # Filter by zona
     comunas_filter = [c.strip() for c in zona.split(",") if c.strip()] if zona else []
@@ -2465,7 +2963,7 @@ def _print_subscription_preview(scored: list[dict], listings_total: int) -> None
 
     console = Console(width=max(160, Console().width))
     now = datetime.now().strftime("%d/%m/%Y %H:%M")
-    _UF = 38_500
+    _UF = 40_100
 
     valid = [s for s in scored if s.get("score") is not None]
     top5 = sorted(valid, key=lambda x: x["score"], reverse=True)[:5]
@@ -2542,7 +3040,7 @@ def _print_subscription_preview(scored: list[dict], listings_total: int) -> None
 # ---------------------------------------------------------------------------
 
 
-async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: bool = False, report: bool = False, invest: bool = False, html_out: bool = False, corredor: bool = False, zona: str = "", subscription_preview: bool = False) -> None:
+async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: bool = False, report: bool = False, invest: bool = False, html_out: bool = False, dashboard: bool = False, corredor: bool = False, zona: str = "", subscription_preview: bool = False) -> None:
     from rich.console import Console
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
@@ -2607,8 +3105,14 @@ async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: b
         f"[green]✓[/green] {len(medians):,} grupos de corredor con mediana calculada"
     )
 
+    # Dynamic commune liquidity (from observed data)
+    commune_liq = _compute_commune_liquidity(unique)
+    console.print(
+        f"[green]✓[/green] {len(commune_liq):,} comunas con liquidez calculada dinámicamente"
+    )
+
     # Score
-    scored = [_score_listing(item, medians) for item in unique]
+    scored = [_score_listing(item, medians, commune_liq) for item in unique]
     n_scored = sum(1 for s in scored if s.get("score") is not None)
     console.print(f"[green]✓[/green] {n_scored:,} propiedades scored\n")
 
@@ -2627,6 +3131,11 @@ async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: b
         path = _generate_html(scored, listings_total=len(unique))
         console.print(f"[bright_green]✓[/bright_green] HTML generado: [bold]{path}[/bold]")
         console.print(f"[dim]  Abre con: xdg-open {path}  /  open {path}  /  o arrastra al browser[/dim]")
+    elif dashboard:
+        path = _generate_dashboard_html(scored, listings_total=len(unique))
+        console.print(f"[bright_green]✓[/bright_green] Dashboard interactivo generado: [bold]{path}[/bold]")
+        console.print(f"[dim]  Filtros: tipo · corredor · score mínimo · badges URGENTE/FLIP/LOTEO[/dim]")
+        console.print(f"[dim]  Abre con: xdg-open {path}  /  open {path}  /  o arrastra al browser[/dim]")
     elif corredor:
         _print_corredor(scored, listings_total=len(unique), zona=zona)
     elif subscription_preview:
@@ -2643,7 +3152,7 @@ async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: b
 def main() -> None:
     args = _parse_args()
 
-    if not args.top20 and not args.report and not args.invest and not args.html and not args.corredor and not args.subscription_preview:
+    if not args.top20 and not args.report and not args.invest and not args.html and not args.dashboard and not args.corredor and not args.subscription_preview:
         print(__doc__)
         sys.exit(0)
 
@@ -2655,6 +3164,7 @@ def main() -> None:
         report=args.report,
         invest=args.invest,
         html_out=args.html,
+        dashboard=args.dashboard,
         corredor=args.corredor,
         zona=args.zona,
         subscription_preview=args.subscription_preview,
