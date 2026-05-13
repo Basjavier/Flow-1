@@ -58,6 +58,9 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use built-in sample data (no internet required — useful in cloud/CI environments)",
     )
+    p.add_argument("--corredor", action="store_true", help="Generate branded Market Intelligence Report PDF for real estate agents")
+    p.add_argument("--zona", type=str, default="", metavar="COMUNAS", help='Comma-separated communes to filter, e.g. "Lampa,Quilicura"')
+    p.add_argument("--subscription-preview", action="store_true", dest="subscription_preview", help="Preview weekly subscriber report format")
     return p.parse_args()
 
 
@@ -157,6 +160,42 @@ def _score_listing(item: dict, medians: dict[tuple, float]) -> dict:
     item["score_price_reduction"] = breakdown.price_reduction
     item["days_on_market"] = days
     item["corridor_median_m2"] = round(median, 0)
+
+    # urgency_score
+    from scoring.engine import urgency_score as _urgency_score, flip_score as _flip_score
+    red_pct = 0.0
+    if item.get("precio_inicial") and item["precio_inicial"] > item["precio"]:
+        red_pct = (item["precio_inicial"] - item["precio"]) / item["precio_inicial"]
+    item["urgency_score"] = _urgency_score(days_on_market=days or 0, reduccion_pct=red_pct)
+
+    # flip_score
+    upside = ((median / item["precio_m2"]) - 1) * 100 if median else 0.0
+    _COMMUNE_LIQ: dict[str, float] = {
+        "Las Condes": 85, "Vitacura": 82, "Providencia": 80, "Lo Barnechea": 75,
+        "Ñuñoa": 72, "La Reina": 70, "Santiago": 68, "Maipú": 55,
+        "La Florida": 58, "San Miguel": 62, "Peñalolén": 50, "Puente Alto": 48,
+        "Quilicura": 52, "Colina": 45, "Lampa": 42, "Buin": 40,
+    }
+    item["flip_score"] = _flip_score(
+        upside_pct=upside,
+        commune_liquidity=_COMMUNE_LIQ.get(item["comuna"], 50.0),
+    )
+
+    # potencial_loteo_score for terrenos
+    if item["tipo_propiedad"] == "terreno":
+        from scoring.engine import potencial_loteo_score as _loteo_score
+        ha = item["m2"] / 10_000
+        precio_ha = item["precio"] / ha if ha > 0 else item["precio"]
+        # derive median_ha from median precio_m2 * 10000
+        median_ha_v2 = median * 10_000 if median else precio_ha
+        item["potencial_loteo_score"] = _loteo_score(
+            precio_ha=precio_ha,
+            median_ha=median_ha_v2,
+            zonificacion=item.get("zonificacion", ""),
+        )
+    else:
+        item["potencial_loteo_score"] = None
+
     return item
 
 
@@ -246,6 +285,7 @@ def _print_top20(scored: list[dict]) -> None:
     t.add_column("vs Med",     justify="right",  no_wrap=True, width=7)
     t.add_column("Días",       justify="right",  no_wrap=True, width=5)
     t.add_column("Dorm/Baño",  justify="center", no_wrap=True, width=9)
+    t.add_column("Flags",      no_wrap=True,     width=22)
     t.add_column("Link",       no_wrap=True,     min_width=35)
 
     for i, prop in enumerate(top, 1):
@@ -258,6 +298,15 @@ def _print_top20(scored: list[dict]) -> None:
             f"{vs_median:+.0f}%",
             style="bright_green" if vs_median < -5 else "yellow" if vs_median < 5 else "red",
         )
+
+        badges = []
+        urg = prop.get("urgency_score", 0) or 0
+        flp = prop.get("flip_score", 0) or 0
+        lot = prop.get("potencial_loteo_score")
+        if urg >= 60:    badges.append("[bold red]URGENTE[/bold red]")
+        if flp >= 65:    badges.append("[bold yellow]FLIP[/bold yellow]")
+        if lot and lot >= 65: badges.append("[bold cyan]LOTEO[/bold cyan]")
+        badge_str = " ".join(badges) if badges else ""
 
         url = prop.get("url", "")
         short_url = url.replace("https://www.portalinmobiliario.com", "portal.cl")[:48]
@@ -281,6 +330,7 @@ def _print_top20(scored: list[dict]) -> None:
             vs_text,
             str(prop.get("days_on_market") or "—"),
             db,
+            badge_str,
             f"[dim][link={url}]{short_url}[/link][/dim]",
         )
 

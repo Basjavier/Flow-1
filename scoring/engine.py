@@ -164,3 +164,78 @@ def classify_alert_level(score: float) -> Optional[str]:
     if score >= SCORE_MEDIUM:
         return "MEDIUM"
     return None
+
+
+# ---------------------------------------------------------------------------
+# New signal scores (Module 1-2)
+# ---------------------------------------------------------------------------
+
+
+def potencial_loteo_score(precio_ha: float, median_ha: float, zonificacion: str = "") -> float:
+    """
+    Score land subdivision potential.
+    precio_ha < median → opportunity. Bonus for favorable zoning.
+    """
+    if median_ha <= 0:
+        return 50.0
+    ratio = precio_ha / median_ha
+    if ratio <= 0.60:    base = 100.0
+    elif ratio <= 0.75:  base = 85.0
+    elif ratio <= 0.90:  base = 70.0
+    elif ratio <= 1.05:  base = 55.0
+    elif ratio <= 1.20:  base = 40.0
+    else:                base = 20.0
+    # zoning bonus
+    zon = zonificacion.upper()
+    if any(x in zon for x in ("H", "HABITACIONAL", "ZH")):
+        base = min(100.0, base + 10.0)
+    elif any(x in zon for x in ("AG", "AGRIC")):
+        base = max(0.0, base - 10.0)
+    return float(base)
+
+
+def urgency_score(
+    days_on_market: int,
+    reduccion_pct: float,
+    precio_vs_avaluo_ratio: float = 1.0,
+) -> float:
+    """
+    Independent urgency signal (0-100): motivated seller / distressed asset.
+    - days_on_market > 60:    +40
+    - reduccion_pct > 10%:    +35
+    - precio < 85% avaluo:    +25
+    """
+    pts = 0.0
+    if days_on_market > 60:
+        pts += 40.0
+    elif days_on_market > 30:
+        pts += 20.0
+    if reduccion_pct > 0.10:
+        pts += 35.0
+    elif reduccion_pct > 0.05:
+        pts += 18.0
+    if 0 < precio_vs_avaluo_ratio < 0.85:
+        pts += 25.0
+    elif 0 < precio_vs_avaluo_ratio < 0.95:
+        pts += 12.0
+    return float(min(100.0, pts))
+
+
+def flip_score(
+    upside_pct: float,
+    commune_liquidity: float = 50.0,
+) -> float:
+    """
+    Score for short-term flip potential (0-100).
+    upside_pct: (corridor_median_m2 / precio_m2 - 1) * 100
+    commune_liquidity: pre-computed 0-100 liquidity score for commune
+    """
+    # upside component (60%)
+    if upside_pct >= 25:    up_score = 100.0
+    elif upside_pct >= 15:  up_score = 85.0
+    elif upside_pct >= 10:  up_score = 70.0
+    elif upside_pct >= 5:   up_score = 55.0
+    elif upside_pct >= 0:   up_score = 40.0
+    else:                   up_score = 20.0
+    # liquidity is passed in directly
+    return float(min(100.0, up_score * 0.60 + commune_liquidity * 0.40))

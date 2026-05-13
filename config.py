@@ -57,6 +57,7 @@ CORREDORES: dict[str, list[str]] = {
     "linea_7": ["Vitacura", "Las Condes", "Lo Barnechea"],
     "linea_8": ["Puente Alto", "La Florida", "Peñalolén"],
     "expansion": ["Ñuñoa", "Providencia", "Santiago"],
+    "terrenos_periurbano": ["Lampa", "Batuco", "Quilicura", "Colina", "Buin", "Paine", "María Pinto"],
 }
 
 # Reverse lookup: commune → corredor name
@@ -71,6 +72,11 @@ PRIORITY_COMMUNES = [
     "Vitacura", "Las Condes", "Lo Barnechea",
     "Puente Alto", "La Florida", "Peñalolén",
     "Ñuñoa", "Providencia", "Santiago",
+]
+
+# Priority communes for terreno/loteo periurbano
+TERRENO_PRIORITY_COMMUNES = [
+    "Lampa", "Batuco", "Quilicura", "Colina", "Buin", "Paine", "María Pinto",
 ]
 
 # All property types to scrape (includes terrenos for full RM sweep)
