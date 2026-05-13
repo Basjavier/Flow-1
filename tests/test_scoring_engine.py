@@ -253,3 +253,78 @@ class TestClassifyAlertLevel:
 
     def test_zero_returns_none(self):
         assert classify_alert_level(0.0) is None
+
+
+class TestUrgencyScore:
+    def test_no_urgency(self):
+        from scoring.engine import urgency_score
+        assert urgency_score(0, 0.0) == 0.0
+
+    def test_long_days_only(self):
+        from scoring.engine import urgency_score
+        result = urgency_score(90, 0.0)
+        assert result == pytest.approx(40.0)
+
+    def test_reduction_only(self):
+        from scoring.engine import urgency_score
+        result = urgency_score(0, 0.12)
+        assert result == pytest.approx(35.0)
+
+    def test_all_signals(self):
+        from scoring.engine import urgency_score
+        # days>60 (+40) + reduction>10% (+35) + avaluo signal (+25) = 100
+        result = urgency_score(90, 0.15, precio_vs_avaluo_ratio=0.80)
+        assert result == pytest.approx(100.0)
+
+    def test_capped_at_100(self):
+        from scoring.engine import urgency_score
+        result = urgency_score(200, 0.25, precio_vs_avaluo_ratio=0.70)
+        assert result == 100.0
+
+
+class TestFlipScore:
+    def test_high_upside_high_liquidity(self):
+        from scoring.engine import flip_score
+        result = flip_score(upside_pct=25.0, commune_liquidity=85.0)
+        assert result == pytest.approx(100.0 * 0.60 + 85.0 * 0.40)
+
+    def test_no_upside(self):
+        from scoring.engine import flip_score
+        result = flip_score(upside_pct=0.0, commune_liquidity=50.0)
+        assert result == pytest.approx(40.0 * 0.60 + 50.0 * 0.40)
+
+    def test_negative_upside_low_score(self):
+        from scoring.engine import flip_score
+        result = flip_score(upside_pct=-5.0, commune_liquidity=30.0)
+        assert result == pytest.approx(20.0 * 0.60 + 30.0 * 0.40)
+
+    def test_capped_at_100(self):
+        from scoring.engine import flip_score
+        result = flip_score(upside_pct=30.0, commune_liquidity=100.0)
+        assert result == 100.0
+
+
+class TestPotencialLoteoScore:
+    def test_at_median_gives_55(self):
+        from scoring.engine import potencial_loteo_score
+        assert potencial_loteo_score(1_000_000, 1_000_000) == pytest.approx(55.0)
+
+    def test_60pct_below_median_gives_100(self):
+        from scoring.engine import potencial_loteo_score
+        assert potencial_loteo_score(600_000, 1_000_000) == pytest.approx(100.0)
+
+    def test_zero_median_returns_50(self):
+        from scoring.engine import potencial_loteo_score
+        assert potencial_loteo_score(1_000_000, 0) == pytest.approx(50.0)
+
+    def test_habitacional_zoning_bonus(self):
+        from scoring.engine import potencial_loteo_score
+        without = potencial_loteo_score(900_000, 1_000_000)  # ratio=0.90 → 70
+        with_zon = potencial_loteo_score(900_000, 1_000_000, "ZH-Habitacional")
+        assert with_zon == pytest.approx(min(100.0, without + 10.0))
+
+    def test_agricultural_zoning_penalty(self):
+        from scoring.engine import potencial_loteo_score
+        without = potencial_loteo_score(900_000, 1_000_000)
+        with_zon = potencial_loteo_score(900_000, 1_000_000, "Ag-Parcela")
+        assert with_zon == pytest.approx(max(0.0, without - 10.0))

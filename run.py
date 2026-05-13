@@ -428,15 +428,28 @@ def _demo_listings() -> list[dict]:
         ("terreno",      "Vitacura",     250,11_000, 0, 0, 45, 0.05),
         ("terreno",      "Colina",       1000,4_500, 0, 0, 90, 0.12),
         ("terreno",      "Lampa",        2000,3_200, 0, 0, 150,0.20),  # ← motivated
+        ("terreno",      "Quilicura",    5000,2_800, 0, 0, 200,0.22),  # ← loteo periurbano
+        ("terreno",      "Colina",       3000,1_900, 0, 0, 180,0.18),
+        ("terreno",      "Buin",         8000,1_200, 0, 0, 240,0.25),
+        ("terreno",      "Paine",        6000,1_100, 0, 0, 120,0.15),
+        ("terreno",      "Lampa",        4000,2_100, 0, 0, 90, 0.10),
+        ("terreno",      "Batuco",      10000,  800, 0, 0, 300,0.30),  # ← muy motivado
     ]
 
     from datetime import timedelta
+    zon_map = {
+        "Quilicura": "ZH-Habitacional", "Colina": "ZH-Habitacional",
+        "Buin": "Ag-Parcela", "Paine": "Ag-Parcela",
+        "Lampa": "ZH-Expansion", "Batuco": "Ag-Parcela",
+        "Lo Barnechea": "ZH-Habitacional", "Las Condes": "ZH-Habitacional",
+        "Vitacura": "ZH-Habitacional",
+    }
     listings: list[dict] = []
     for i, (tipo, comuna, m2, precio_uf, dorm, banos, dias, red_pct) in enumerate(raw):
         precio_clp = int(precio_uf * _UF)
         precio_inicial = int(precio_clp / (1 - red_pct)) if red_pct > 0 else None
         pub_date = (datetime.now(timezone.utc) - timedelta(days=dias)).isoformat()
-        listings.append({
+        item_dict = {
             "external_id":      f"demo-{i:04d}",
             "source":           "portal_inmobiliario",
             "tipo_propiedad":   tipo,
@@ -452,7 +465,9 @@ def _demo_listings() -> list[dict]:
             "url":              f"https://www.portalinmobiliario.com/MLC-demo-{i:04d}",
             "fecha_publicacion": pub_date,
             "scraped_at":       datetime.now(timezone.utc).isoformat(),
-        })
+        }
+        item_dict["zonificacion"] = zon_map.get(comuna, "") if tipo == "terreno" else ""
+        listings.append(item_dict)
     return listings
 
 
@@ -2104,11 +2119,430 @@ tr:hover td{{background:var(--bg3)}}
 
 
 # ---------------------------------------------------------------------------
+# Corredor export — Market Intelligence Report
+# ---------------------------------------------------------------------------
+
+
+def _generate_corredor_pdf(
+    top_props: list[dict],
+    all_props: list[dict],
+    zona_label: str,
+    fecha_l: str,
+    listings_total: int,
+) -> str:
+    """Generate a branded Market Intelligence Report PDF. Returns file path."""
+    from pathlib import Path
+    import statistics as st
+
+    _UF = 38_500
+    now_str = datetime.now().strftime("%Y%m%d_%H%M")
+    out_path = Path(f"market_intel_{now_str}.pdf")
+
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import cm
+        from reportlab.lib import colors
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer, Table as RLTable,
+            TableStyle, HRFlowable,
+        )
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+
+        # Colors
+        C_BG_DARK  = colors.HexColor("#060d1a")
+        C_CYAN     = colors.HexColor("#00bcd4")
+        C_GREEN    = colors.HexColor("#00e676")
+        C_YELLOW   = colors.HexColor("#ffd740")
+        C_WHITE    = colors.HexColor("#e8eaf6")
+        C_DIM      = colors.HexColor("#6b7a99")
+        C_RED      = colors.HexColor("#ff5252")
+
+        styles = getSampleStyleSheet()
+        style_title = ParagraphStyle("title", parent=styles["Title"],
+            textColor=C_WHITE, backColor=C_BG_DARK, fontSize=22,
+            fontName="Helvetica-Bold", alignment=TA_CENTER, spaceAfter=4)
+        style_sub = ParagraphStyle("sub", parent=styles["Normal"],
+            textColor=C_DIM, fontSize=10, alignment=TA_CENTER, spaceAfter=12)
+        style_h2 = ParagraphStyle("h2", parent=styles["Heading2"],
+            textColor=C_CYAN, fontSize=11, fontName="Helvetica-Bold",
+            spaceBefore=16, spaceAfter=6)
+        style_normal = ParagraphStyle("norm", parent=styles["Normal"],
+            textColor=C_WHITE, fontSize=9, spaceAfter=4)
+        style_footer = ParagraphStyle("footer", parent=styles["Normal"],
+            textColor=C_DIM, fontSize=7, alignment=TA_CENTER)
+
+        doc = SimpleDocTemplate(
+            str(out_path), pagesize=A4,
+            leftMargin=1.8*cm, rightMargin=1.8*cm,
+            topMargin=1.5*cm, bottomMargin=1.5*cm,
+        )
+        story = []
+
+        def M(n):
+            m = n / 1_000_000
+            return f"${m:.1f}M" if m < 1000 else f"${m:.0f}M"
+
+        def UF_v(clp):
+            return f"UF {clp/_UF:,.0f}"
+
+        # Cover
+        story.append(Paragraph("MARKET INTELLIGENCE REPORT", style_title))
+        story.append(Paragraph("Real Estate Intelligence Agent · Informe para Corredor", style_sub))
+        story.append(Paragraph(f"Zona: {zona_label}  ·  {fecha_l}", style_sub))
+        story.append(Spacer(1, 0.4*cm))
+        story.append(HRFlowable(width="100%", thickness=1, color=C_CYAN))
+        story.append(Spacer(1, 0.4*cm))
+
+        # KPI summary
+        story.append(Paragraph("Resumen de Mercado", style_h2))
+        avg_score = st.mean(s["score"] for s in all_props)
+        med_price = st.median(s["precio"] for s in all_props)
+        n_high = sum(1 for s in all_props if s["score"] >= 75)
+        avg_m2 = st.mean(s["m2"] for s in all_props)
+
+        kpi_data = [
+            ["Propiedades analizadas", str(listings_total), "Oportunidades HIGH", str(n_high)],
+            ["Precio mediana zona", f"{M(int(med_price))} ({UF_v(int(med_price))})", "Score promedio", f"{avg_score:.1f}"],
+            ["Superficie prom.", f"{avg_m2:.0f} m²", "Top oportunidades presentadas", str(len(top_props))],
+        ]
+        kpi_tbl = RLTable(kpi_data, colWidths=[4.5*cm, 5*cm, 5*cm, 3.5*cm])
+        kpi_tbl.setStyle(TableStyle([
+            ("BACKGROUND",  (0,0), (-1,-1), C_BG_DARK),
+            ("TEXTCOLOR",   (0,0), (-1,-1), C_WHITE),
+            ("TEXTCOLOR",   (0,0), (0,-1),  C_DIM),
+            ("TEXTCOLOR",   (2,0), (2,-1),  C_DIM),
+            ("FONTNAME",    (1,0), (1,-1),  "Helvetica-Bold"),
+            ("FONTNAME",    (3,0), (3,-1),  "Helvetica-Bold"),
+            ("TEXTCOLOR",   (1,0), (1,-1),  C_GREEN),
+            ("TEXTCOLOR",   (3,0), (3,-1),  C_CYAN),
+            ("FONTSIZE",    (0,0), (-1,-1), 9),
+            ("ROWBACKGROUNDS", (0,0), (-1,-1), [colors.HexColor("#0d1b2e"), colors.HexColor("#132035")]),
+            ("GRID",        (0,0), (-1,-1), 0.5, colors.HexColor("#1e3050")),
+            ("TOPPADDING",  (0,0), (-1,-1), 6),
+            ("BOTTOMPADDING",(0,0), (-1,-1), 6),
+            ("LEFTPADDING", (0,0), (-1,-1), 8),
+        ]))
+        story.append(kpi_tbl)
+        story.append(Spacer(1, 0.4*cm))
+
+        # Pipeline table
+        story.append(Paragraph(f"Top {len(top_props)} Oportunidades — Zona {zona_label}", style_h2))
+        headers = ["#", "Tipo", "Comuna", "Precio", "UF", "m²", "vs Med.", "Días", "Score", "Señal"]
+        tbl_data = [headers]
+        for idx, prop in enumerate(top_props, 1):
+            sc = prop["score"]
+            med = int(prop.get("corridor_median_m2") or 1)
+            pm2 = int(prop["precio_m2"])
+            vs = ((pm2 / med) - 1) * 100
+            urg = prop.get("urgency_score", 0) or 0
+            flp = prop.get("flip_score", 0) or 0
+            lot = prop.get("potencial_loteo_score") or 0
+            sigs = []
+            if urg >= 60: sigs.append("URGENTE")
+            if flp >= 65: sigs.append("FLIP")
+            if lot >= 65: sigs.append("LOTEO")
+            tipo_short = {"departamento": "Depto", "casa": "Casa", "terreno": "Terreno"}.get(prop.get("tipo_propiedad",""), "—")
+            tbl_data.append([
+                str(idx),
+                tipo_short,
+                prop.get("comuna", "—"),
+                M(prop["precio"]),
+                UF_v(prop["precio"]),
+                f"{prop['m2']:.0f}",
+                f"{vs:+.0f}%",
+                str(prop.get("days_on_market") or "—"),
+                f"{sc:.1f}",
+                " / ".join(sigs) if sigs else "—",
+            ])
+
+        def _sc_color(row_idx):
+            if row_idx == 0: return None
+            sc_val = float(tbl_data[row_idx][8])
+            if sc_val >= 75: return C_GREEN
+            if sc_val >= 60: return C_YELLOW
+            return C_RED
+
+        col_widths = [0.7*cm, 1.8*cm, 3.2*cm, 2.8*cm, 2.5*cm, 1.4*cm, 1.6*cm, 1.2*cm, 1.5*cm, 2.3*cm]
+        pipeline_tbl = RLTable(tbl_data, colWidths=col_widths, repeatRows=1)
+        ts = [
+            ("BACKGROUND",    (0,0), (-1,0),  colors.HexColor("#132035")),
+            ("TEXTCOLOR",     (0,0), (-1,0),  C_CYAN),
+            ("FONTNAME",      (0,0), (-1,0),  "Helvetica-Bold"),
+            ("FONTSIZE",      (0,0), (-1,-1), 8),
+            ("BACKGROUND",    (0,1), (-1,-1), C_BG_DARK),
+            ("TEXTCOLOR",     (0,1), (-1,-1), C_WHITE),
+            ("ROWBACKGROUNDS",(0,1), (-1,-1), [colors.HexColor("#0d1b2e"), colors.HexColor("#0a1520")]),
+            ("GRID",          (0,0), (-1,-1), 0.5, colors.HexColor("#1e3050")),
+            ("TOPPADDING",    (0,0), (-1,-1), 5),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+            ("LEFTPADDING",   (0,0), (-1,-1), 6),
+            ("ALIGN",         (3,0), (5,-1),  "RIGHT"),
+            ("ALIGN",         (6,0), (-1,-1), "CENTER"),
+        ]
+        # Color score column per value
+        for row_i in range(1, len(tbl_data)):
+            c = _sc_color(row_i)
+            if c:
+                ts.append(("TEXTCOLOR", (8, row_i), (8, row_i), c))
+                ts.append(("FONTNAME",  (8, row_i), (8, row_i), "Helvetica-Bold"))
+        pipeline_tbl.setStyle(TableStyle(ts))
+        story.append(pipeline_tbl)
+        story.append(Spacer(1, 0.5*cm))
+
+        # Methodology note
+        story.append(HRFlowable(width="100%", thickness=0.5, color=C_DIM))
+        story.append(Spacer(1, 0.2*cm))
+        story.append(Paragraph(
+            "Metodología: Score compuesto = precio/m² vs mediana corredor (55%) + tiempo en mercado (30%) + "
+            "reducción precio (15%). Señal URGENTE = días > 60 + reducción > 10%. "
+            "Señal FLIP = upside vs mediana > 10% + liquidez comunal alta. "
+            "Señal LOTEO = precio/ha bajo mediana + zonificación favorable.",
+            style_footer,
+        ))
+        story.append(Spacer(1, 0.1*cm))
+        story.append(Paragraph(
+            f"Datos: Portal Inmobiliario · UF = $38,500 CLP · Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')} · "
+            "Este documento es confidencial. No constituye asesoría financiera.",
+            style_footer,
+        ))
+
+        doc.build(story)
+        return str(out_path.resolve())
+
+    except ImportError:
+        # ReportLab not available — write a plain text file instead
+        txt_path = Path(f"market_intel_{now_str}.txt")
+        lines = [
+            "MARKET INTELLIGENCE REPORT",
+            f"Zona: {zona_label}  ·  {fecha_l}",
+            f"Propiedades analizadas: {listings_total}",
+            "",
+            f"{'#':>3}  {'Score':>6}  {'Tipo':<8}  {'Comuna':<14}  {'Precio':>10}",
+            "-" * 60,
+        ]
+        def M(n):
+            m = n / 1_000_000
+            return f"${m:.1f}M" if m < 1000 else f"${m:.0f}M"
+        for idx, prop in enumerate(top_props, 1):
+            lines.append(
+                f"{idx:>3}  {prop['score']:>6.1f}  "
+                f"{prop.get('tipo_propiedad','')[:8]:<8}  "
+                f"{prop.get('comuna',''):<14}  "
+                f"{M(prop['precio']):>10}"
+            )
+        txt_path.write_text("\n".join(lines), encoding="utf-8")
+        return str(txt_path.resolve())
+
+
+def _print_corredor(scored: list[dict], listings_total: int, zona: str = "") -> None:
+    import statistics as st
+    from rich.console import Console
+    from rich.table import Table
+    from rich import box
+    from rich.rule import Rule
+    from rich.panel import Panel
+    from rich.text import Text
+    from pathlib import Path
+
+    console = Console(width=max(160, Console().width))
+    now = datetime.now().strftime("%d/%m/%Y %H:%M")
+    fecha_l = datetime.now().strftime("%d de %B de %Y")
+    _UF = 38_500
+
+    # Filter by zona
+    comunas_filter = [c.strip() for c in zona.split(",") if c.strip()] if zona else []
+    valid = [s for s in scored if s.get("score") is not None]
+    if comunas_filter:
+        valid = [s for s in valid if s["comuna"] in comunas_filter]
+    if not valid:
+        console.print("[red]No hay propiedades en la zona especificada.[/red]")
+        return
+
+    top = sorted(valid, key=lambda x: x["score"], reverse=True)[:15]
+
+    def _M(n):
+        m = n / 1_000_000
+        return f"${m:.1f}M" if m < 1000 else f"${m:.0f}M"
+
+    def _UF_v(clp):
+        return f"UF {clp/_UF:,.0f}"
+
+    zona_label = " · ".join(comunas_filter) if comunas_filter else "Región Metropolitana"
+
+    console.print()
+    console.rule(f"[bold white]MARKET INTELLIGENCE REPORT[/bold white]", style="bright_cyan")
+    console.print(Panel(
+        f"[bold cyan]Real Estate Intelligence Agent[/bold cyan] · [dim]Informe para Corredor[/dim]\n"
+        f"[white]{fecha_l}[/white]  ·  Zona: [bold]{zona_label}[/bold]  ·  "
+        f"{len(valid)} oportunidades analizadas  ·  Top {len(top)} presentadas",
+        style="cyan",
+        padding=(0, 2),
+    ))
+
+    # Stats
+    avg_score = st.mean(s["score"] for s in valid)
+    med_price = st.median(s["precio"] for s in valid)
+    avg_m2 = st.mean(s["m2"] for s in valid)
+    n_high = sum(1 for s in valid if s["score"] >= 75)
+
+    stats = Table(box=box.SIMPLE, show_header=False, padding=(0, 3), border_style="dim")
+    stats.add_column("k", style="dim", width=22)
+    stats.add_column("v", style="bold white", width=18)
+    stats.add_column("k2", style="dim", width=22)
+    stats.add_column("v2", style="bold white", width=18)
+    stats.add_row("Oportunidades HIGH",  f"[bright_green]{n_high}[/bright_green]",
+                  "Score promedio",      f"{avg_score:.1f}")
+    stats.add_row("Precio mediana zona", f"{_M(int(med_price))}  ({_UF_v(int(med_price))})",
+                  "Superficie prom.",   f"{avg_m2:.0f} m²")
+    console.print(stats)
+    console.print()
+
+    # Table
+    t = Table(box=box.SIMPLE_HEAVY, header_style="bold cyan", border_style="dim white", show_lines=False, padding=(0, 1))
+    t.add_column("#",         style="dim",   no_wrap=True, width=3)
+    t.add_column("Score",     justify="right", no_wrap=True, width=6)
+    t.add_column("Tipo",      no_wrap=True, width=8)
+    t.add_column("Comuna",    no_wrap=True, width=14)
+    t.add_column("Precio",    justify="right", no_wrap=True, width=10)
+    t.add_column("UF",        justify="right", no_wrap=True, width=9)
+    t.add_column("m²",        justify="right", no_wrap=True, width=6)
+    t.add_column("CLP/m²",    justify="right", no_wrap=True, width=9)
+    t.add_column("vs Mediana",justify="right", no_wrap=True, width=9)
+    t.add_column("Días",      justify="right", no_wrap=True, width=5)
+    t.add_column("Urgente",   justify="center", no_wrap=True, width=8)
+    t.add_column("Flip",      justify="center", no_wrap=True, width=6)
+    t.add_column("Link",      no_wrap=True, min_width=35)
+
+    def _sc(s):
+        if s >= 75: return "bright_green"
+        if s >= 60: return "green"
+        if s >= 45: return "yellow"
+        return "red"
+
+    for i, prop in enumerate(top, 1):
+        sc = prop["score"]
+        med = int(prop.get("corridor_median_m2") or 1)
+        pm2 = int(prop["precio_m2"])
+        vs = ((pm2 / med) - 1) * 100
+        urg = prop.get("urgency_score", 0) or 0
+        flp = prop.get("flip_score", 0) or 0
+        url = prop.get("url", "")
+        short_url = url.replace("https://www.portalinmobiliario.com", "portal.cl")[:45]
+        tipo_short = {"departamento": "Depto", "casa": "Casa", "terreno": "Terreno"}.get(prop.get("tipo_propiedad",""), "—")
+
+        t.add_row(
+            str(i),
+            Text(f"{sc:.1f}", style=f"bold {_sc(sc)}"),
+            tipo_short,
+            prop.get("comuna", "—"),
+            _M(prop["precio"]),
+            _UF_v(prop["precio"]),
+            f"{prop['m2']:.0f}",
+            f"${pm2/1000:.0f}k" if pm2 < 1_000_000 else f"${pm2/1_000_000:.2f}M",
+            Text(f"{vs:+.0f}%", style="bright_green" if vs < -5 else "yellow" if vs < 5 else "red"),
+            str(prop.get("days_on_market") or "—"),
+            Text("●" if urg >= 60 else "○", style="red bold" if urg >= 60 else "dim"),
+            Text("●" if flp >= 65 else "○", style="yellow bold" if flp >= 65 else "dim"),
+            f"[dim][link={url}]{short_url}[/link][/dim]",
+        )
+
+    console.print(t)
+
+    # Generate PDF
+    pdf_path = _generate_corredor_pdf(top, valid, zona_label, fecha_l, listings_total)
+    console.print(f"\n[bright_green]✓[/bright_green] PDF generado: [bold]{pdf_path}[/bold]")
+    console.print(f"[dim]  Listo para enviar a cliente · {len(top)} oportunidades · zona: {zona_label}[/dim]\n")
+
+
+def _print_subscription_preview(scored: list[dict], listings_total: int) -> None:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.rule import Rule
+    from rich.table import Table
+    from rich import box
+    import statistics as st
+
+    console = Console(width=max(160, Console().width))
+    now = datetime.now().strftime("%d/%m/%Y %H:%M")
+    _UF = 38_500
+
+    valid = [s for s in scored if s.get("score") is not None]
+    top5 = sorted(valid, key=lambda x: x["score"], reverse=True)[:5]
+
+    def _M(n):
+        m = n / 1_000_000
+        return f"${m:.1f}M" if m < 1000 else f"${m:.0f}M"
+
+    console.print()
+    console.rule("[bold white]── PREVIEW REPORTE SEMANAL SUSCRIPTOR ──[/bold white]", style="yellow")
+    console.print(Panel(
+        "[bold yellow]Real Estate Intelligence Weekly Digest[/bold yellow]\n"
+        f"[dim]Semana del {datetime.now().strftime('%d/%m/%Y')}  ·  Edición Suscriptor Premium[/dim]\n\n"
+        "[white]Estimado suscriptor,[/white]\n"
+        "Esta semana el agente analizó [bold]{0:,}[/bold] propiedades en la RM.\n"
+        "A continuación sus [bold]top 5 oportunidades[/bold] personalizadas:\n".format(listings_total),
+        title="[bold yellow]📬 Market Digest — Preview[/bold yellow]",
+        border_style="yellow",
+    ))
+
+    t = Table(box=box.ROUNDED, header_style="bold yellow", border_style="yellow", padding=(0, 1))
+    t.add_column("#",       style="dim",     no_wrap=True, width=3)
+    t.add_column("Score",   justify="right", no_wrap=True, width=6)
+    t.add_column("Tipo",    no_wrap=True,    width=8)
+    t.add_column("Comuna",  no_wrap=True,    width=14)
+    t.add_column("Precio",  justify="right", no_wrap=True, width=10)
+    t.add_column("vs Med",  justify="right", no_wrap=True, width=7)
+    t.add_column("Días",    justify="right", no_wrap=True, width=5)
+    t.add_column("Señales", no_wrap=True,    width=18)
+
+    for i, prop in enumerate(top5, 1):
+        sc = prop["score"]
+        med = int(prop.get("corridor_median_m2") or 1)
+        pm2 = int(prop["precio_m2"])
+        vs = ((pm2 / med) - 1) * 100
+        urg = prop.get("urgency_score", 0) or 0
+        flp = prop.get("flip_score", 0) or 0
+        lot = prop.get("potencial_loteo_score") or 0
+        senales = []
+        if urg >= 60: senales.append("[red]URGENTE[/red]")
+        if flp >= 65: senales.append("[yellow]FLIP[/yellow]")
+        if lot >= 65: senales.append("[cyan]LOTEO[/cyan]")
+
+        tipo_short = {"departamento": "Depto", "casa": "Casa", "terreno": "Terreno"}.get(prop.get("tipo_propiedad",""), "—")
+        t.add_row(
+            str(i),
+            f"[bold bright_green]{sc:.1f}[/bold bright_green]",
+            tipo_short,
+            prop.get("comuna", "—"),
+            _M(prop["precio"]),
+            f"[bright_green]{vs:+.0f}%[/bright_green]" if vs < -5 else f"{vs:+.0f}%",
+            str(prop.get("days_on_market") or "—"),
+            " ".join(senales) if senales else "[dim]—[/dim]",
+        )
+    console.print(t)
+
+    # subscription CTA
+    console.print(Panel(
+        "[bold white]Este reporte es generado automáticamente cada lunes 08:00.\n"
+        "Los suscriptores reciben además:\n"
+        "  · PDF descargable con fichas completas de cada propiedad\n"
+        "  · Alertas en tiempo real (Telegram/Email) cuando aparece score ≥ 85\n"
+        "  · Análisis de corredor personalizado por zona de interés\n"
+        "  · Dashboard web con histórico de precios y tendencias\n\n"
+        "[cyan]Plan Corredor Pro[/cyan]: CLP 49.900/mes · [cyan]Plan Fondo[/cyan]: CLP 199.900/mes[/bold white]",
+        title="[bold cyan]Servicios de Suscripción[/bold cyan]",
+        border_style="cyan",
+    ))
+    console.print(f"\n[dim]  Reporte generado: {now}  ·  Portal Inmobiliario  ·  {listings_total} propiedades[/dim]\n")
+
+
+# ---------------------------------------------------------------------------
 # Main command: --top20
 # ---------------------------------------------------------------------------
 
 
-async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: bool = False, report: bool = False, invest: bool = False, html_out: bool = False) -> None:
+async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: bool = False, report: bool = False, invest: bool = False, html_out: bool = False, corredor: bool = False, zona: str = "", subscription_preview: bool = False) -> None:
     from rich.console import Console
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
@@ -2193,6 +2627,10 @@ async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: b
         path = _generate_html(scored, listings_total=len(unique))
         console.print(f"[bright_green]✓[/bright_green] HTML generado: [bold]{path}[/bold]")
         console.print(f"[dim]  Abre con: xdg-open {path}  /  open {path}  /  o arrastra al browser[/dim]")
+    elif corredor:
+        _print_corredor(scored, listings_total=len(unique), zona=zona)
+    elif subscription_preview:
+        _print_subscription_preview(scored, listings_total=len(unique))
     else:
         _print_top20(scored)
 
@@ -2205,7 +2643,7 @@ async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: b
 def main() -> None:
     args = _parse_args()
 
-    if not args.top20 and not args.report and not args.invest and not args.html:
+    if not args.top20 and not args.report and not args.invest and not args.html and not args.corredor and not args.subscription_preview:
         print(__doc__)
         sys.exit(0)
 
@@ -2217,6 +2655,9 @@ def main() -> None:
         report=args.report,
         invest=args.invest,
         html_out=args.html,
+        corredor=args.corredor,
+        zona=args.zona,
+        subscription_preview=args.subscription_preview,
     ))
 
 
