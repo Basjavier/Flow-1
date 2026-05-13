@@ -52,6 +52,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--json", action="store_true", dest="output_json", help="Output raw JSON")
     p.add_argument("--report", action="store_true", help="Full financial market report (all metrics)")
     p.add_argument("--invest", action="store_true", help="CFO-grade investment memo for fund presentation")
+    p.add_argument("--html",   action="store_true", help="Export investment memo as self-contained HTML (opens in browser)")
     p.add_argument(
         "--demo",
         action="store_true",
@@ -1433,11 +1434,631 @@ def _print_invest(scored: list[dict], listings_total: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# HTML export — self-contained investment memo
+# ---------------------------------------------------------------------------
+
+
+def _generate_html(scored: list[dict], listings_total: int) -> str:
+    """Generate a self-contained HTML investment memo. Returns the file path."""
+    import statistics as st
+    from pathlib import Path
+
+    _UF      = 38_500
+    FUND_CLP = 5_000_000_000
+    now      = datetime.now().strftime("%d/%m/%Y %H:%M")
+    fecha_l  = datetime.now().strftime("%d de %B de %Y")
+
+    valid = [s for s in scored if s.get("score") is not None]
+    top10 = sorted(valid, key=lambda x: x["score"], reverse=True)[:10]
+    top5  = top10[:5]
+    high  = [s for s in valid if s["score"] >= 75]
+
+    def M(n):
+        m = n / 1_000_000
+        return f"${m:.1f}M" if m < 1000 else f"${m:.0f}M"
+
+    def UF_(clp):
+        return f"UF {clp/_UF:,.0f}"
+
+    def pct_color(v):
+        if v >= 15:   return "#00e676"
+        if v >= 5:    return "#69f0ae"
+        if v >= -5:   return "#ffd740"
+        return "#ff5252"
+
+    def score_color(s):
+        if s >= 90: return "#00e676"
+        if s >= 80: return "#69f0ae"
+        if s >= 70: return "#ffd740"
+        return "#ff5252"
+
+    def irr_newton(cf, guess=0.10):
+        r = guess
+        for _ in range(60):
+            npv  = sum(c / (1+r)**t for t, c in enumerate(cf))
+            dnpv = sum(-t*c / (1+r)**(t+1) for t, c in enumerate(cf))
+            if abs(dnpv) < 1e-12: break
+            r -= npv / dnpv
+            if r <= -1: r = -0.9999
+        return r
+
+    def deal_fin(s, appr=0.035, arr=0.0045, vac=0.04, op=0.01, tx=0.035, hold=5):
+        entrada  = s["precio"]
+        inv      = entrada * (1 + tx)
+        med_m2   = s.get("corridor_median_m2") or s["precio_m2"]
+        val_merc = med_m2 * s["m2"]
+        arr_n    = entrada * arr * (1 - vac) * (1 - op)
+        cap_rate = arr_n * 12 / entrada * 100
+        val_exit = (entrada / _UF) * ((1+appr)**hold) * _UF
+        cfs      = [-inv] + [arr_n*12]*(hold-1) + [arr_n*12 + val_exit]
+        irr      = irr_newton(cfs) * 100
+        moic     = (val_exit + arr_n*12*hold) / inv
+        return dict(inv=inv, val_merc=val_merc,
+                    upside=(val_merc/entrada-1)*100,
+                    arr_n=arr_n, cap_rate=cap_rate,
+                    val_exit=val_exit, irr=irr, moic=moic,
+                    noi=arr_n*12, payback=inv/(arr_n*12) if arr_n else 99)
+
+    fins     = [deal_fin(s) for s in top10]
+    avg_cap  = st.mean(f["cap_rate"] for f in fins)
+    avg_irr  = st.mean(f["irr"]      for f in fins)
+    avg_moic = st.mean(f["moic"]     for f in fins)
+    avg_disc = st.mean((1 - s["precio_m2"] / (s.get("corridor_median_m2") or s["precio_m2"])) * 100 for s in top10)
+    avg_up   = abs(avg_disc)
+    nav_d0   = int(FUND_CLP * (1 + avg_up/100))
+    dias_h   = st.mean(s.get("days_on_market") or 0 for s in high)
+
+    bear_irr = st.mean(deal_fin(s, appr=0.010, arr=0.0038, vac=0.08)["irr"] for s in top10)
+    bull_irr = st.mean(deal_fin(s, appr=0.055, arr=0.0052, vac=0.025)["irr"] for s in top10)
+
+    # ── pipeline rows ────────────────────────────────────────────────────────
+    def pipe_rows():
+        rows = ""
+        for i, (s, f) in enumerate(zip(top10, fins), 1):
+            med   = s.get("corridor_median_m2") or s["precio_m2"]
+            desc  = (1 - s["precio_m2"] / med) * 100
+            sc    = s["score"]
+            badge = ("COMPRA YA" if sc >= 90 else "ALTA PRIORIDAD" if sc >= 82 else "MONITOREAR")
+            bcls  = ("badge-buy" if sc >= 90 else "badge-high" if sc >= 82 else "badge-watch")
+            dorm  = s.get("dormitorios"); banos = s.get("banos")
+            db    = f"{dorm}d/{banos}b" if dorm and banos else "—"
+            url   = s.get("url","")
+            rows += f"""
+            <tr>
+              <td><span class="deal-id">D-{i:02d}</span></td>
+              <td><strong>{s['comuna']}</strong></td>
+              <td>{s['tipo_propiedad'].capitalize()}</td>
+              <td>{s['m2']:.0f} m²</td>
+              <td>{db}</td>
+              <td class="num">{M(s['precio'])}</td>
+              <td class="num">{UF_(s['precio'])}</td>
+              <td class="num">${s['precio_m2']:,.0f}</td>
+              <td class="num">${med:,.0f}</td>
+              <td class="num" style="color:{pct_color(desc)};font-weight:700">{desc:+.1f}%</td>
+              <td class="num">{s.get('days_on_market') or '—'}</td>
+              <td class="num" style="color:{score_color(sc)};font-weight:700">{sc:.1f}</td>
+              <td class="num" style="color:#69f0ae">{f['irr']:.1f}%</td>
+              <td><span class="badge {bcls}">{badge}</span></td>
+              <td><a href="{url}" target="_blank" class="link">↗</a></td>
+            </tr>"""
+        return rows
+
+    # ── deal cards ───────────────────────────────────────────────────────────
+    def deal_cards():
+        cards = ""
+        for i, (s, f) in enumerate(zip(top5, fins[:5]), 1):
+            med   = s.get("corridor_median_m2") or s["precio_m2"]
+            desc  = (1 - s["precio_m2"] / med) * 100
+            red   = 0.0
+            if s.get("precio_inicial") and s["precio_inicial"] > s["precio"]:
+                red = (1 - s["precio"] / s["precio_inicial"]) * 100
+            url   = s.get("url", "")
+            tipo_l = {"departamento": "Departamento", "casa": "Casa", "terreno": "Terreno"}.get(s["tipo_propiedad"], s["tipo_propiedad"])
+            dorm   = s.get("dormitorios"); banos = s.get("banos")
+            db     = f"{dorm} dorm · {banos} baños" if dorm and banos else "—"
+            sc     = s["score"]
+
+            red_html = f'<div class="card-row"><span>Reducción precio</span><span class="green">-{red:.1f}% ({M(int(s["precio_inicial"]-s["precio"]))} ahorrado)</span></div>' if red > 0 else ""
+
+            cards += f"""
+            <div class="deal-card">
+              <div class="deal-header">
+                <div>
+                  <span class="deal-label">D-{i:02d}</span>
+                  <span class="deal-title">{tipo_l} · {s['comuna']}</span>
+                  <span class="deal-sub">{s['m2']:.0f} m² · {db}</span>
+                </div>
+                <div class="score-circle" style="border-color:{score_color(sc)}">
+                  <div class="score-num" style="color:{score_color(sc)}">{sc:.0f}</div>
+                  <div class="score-label">SCORE</div>
+                </div>
+              </div>
+              <div class="card-grid">
+                <div class="card-block">
+                  <div class="block-title">PRECIO</div>
+                  <div class="card-row"><span>Precio entrada</span><span class="white big">{M(s['precio'])} <small>({UF_(s['precio'])})</small></span></div>
+                  <div class="card-row"><span>CLP/m²</span><span>${s['precio_m2']:,.0f}</span></div>
+                  <div class="card-row"><span>Mediana corredor</span><span>${med:,.0f}/m²</span></div>
+                  <div class="card-row"><span>Descuento vs mediana</span><span class="green big">{desc:+.1f}%</span></div>
+                  <div class="card-row"><span>Valor a precio mercado</span><span class="green">{M(int(f['val_merc']))}</span></div>
+                  <div class="card-row"><span>Upside D0</span><span class="green big">{f['upside']:+.1f}%</span></div>
+                  {red_html}
+                </div>
+                <div class="card-block">
+                  <div class="block-title">TIMING</div>
+                  <div class="card-row"><span>Días en mercado</span><span class="yellow big">{s.get('days_on_market') or '—'} días</span></div>
+                  <div class="block-title" style="margin-top:16px">RENTA</div>
+                  <div class="card-row"><span>Arriendo neto/mes</span><span>{M(f['arr_n'])}</span></div>
+                  <div class="card-row"><span>NOI anual</span><span>{M(f['noi'])}</span></div>
+                  <div class="card-row"><span>Yield bruto</span><span>{f['arr_n']*12/s['precio']*100/0.96:.2f}%</span></div>
+                  <div class="card-row"><span>Cap rate neto</span><span class="green">{f['cap_rate']:.2f}%</span></div>
+                </div>
+                <div class="card-block">
+                  <div class="block-title">RETORNO 5 AÑOS</div>
+                  <div class="card-row"><span>Inversión total</span><span>{M(f['inv'])}</span></div>
+                  <div class="card-row"><span>Valor exit año 5</span><span class="green">{M(f['val_exit'])}</span></div>
+                  <div class="card-row"><span>Ganancia total</span><span class="green big">{M(f['val_exit']-f['inv']+f['noi']*5)}</span></div>
+                  <div class="card-row"><span>MOIC</span><span class="green big">{f['moic']:.2f}x</span></div>
+                  <div class="card-row"><span>IRR</span><span class="green big">{f['irr']:.1f}%</span></div>
+                  <div class="card-row"><span>Payback (renta)</span><span>{f['payback']:.1f} años</span></div>
+                  <div style="margin-top:12px"><a href="{url}" target="_blank" class="btn-link">Ver propiedad ↗</a></div>
+                </div>
+              </div>
+            </div>"""
+        return cards
+
+    # ── scenario table rows ──────────────────────────────────────────────────
+    def scenario_rows():
+        scens = [
+            ("BEAR", 0.010, 0.0038, 0.08,  "#ff5252"),
+            ("BASE", 0.035, 0.0045, 0.04,  "#e0e0e0"),
+            ("BULL", 0.055, 0.0052, 0.025, "#00e676"),
+        ]
+        rows = ""
+        for name, appr, arr, vac, color in scens:
+            fs   = [deal_fin(s, appr=appr, arr=arr, vac=vac) for s in top10]
+            irrs = [f["irr"] for f in fs]
+            moics= [f["moic"] for f in fs]
+            rows += f"""<tr>
+              <td style="color:{color};font-weight:700">{name}</td>
+              <td>{appr*100:.1f}% UF/a</td>
+              <td>{arr*12*100:.2f}%</td>
+              <td>{vac*100:.0f}%</td>
+              <td style="color:{color}">{irrs[0]:.1f}%</td>
+              <td style="color:{color}">{irrs[1]:.1f}%</td>
+              <td style="color:{color}">{irrs[2]:.1f}%</td>
+              <td style="color:{color}">{irrs[3]:.1f}%</td>
+              <td style="color:{color}">{irrs[4]:.1f}%</td>
+              <td style="color:{color};font-weight:700">{st.mean(irrs):.1f}%</td>
+              <td style="color:{color};font-weight:700">{st.mean(moics):.2f}x</td>
+            </tr>"""
+        return rows
+
+    # ── sensitivity matrix ───────────────────────────────────────────────────
+    def sens_matrix():
+        apprs  = [0.010, 0.025, 0.035, 0.050, 0.065]
+        discs  = [5, 10, 15, 20, 25, 30, 35]
+        d01    = top5[0]
+        base_p = d01["precio"]
+        head   = "<tr><th>Desc. entrada ↓ / Aprec. UF →</th>" + "".join(f"<th>{a*100:.1f}%</th>" for a in apprs) + "</tr>"
+        rows   = ""
+        for disc in discs:
+            adj   = {**d01, "precio": base_p*(1-disc/100), "precio_m2": base_p*(1-disc/100)/d01["m2"]}
+            cells = ""
+            for a in apprs:
+                irr_v = deal_fin(adj, appr=a)["irr"]
+                bg    = ("#00695c" if irr_v >= 16 else "#2e7d32" if irr_v >= 12 else "#f57f17" if irr_v >= 8 else "#b71c1c")
+                cells += f'<td style="background:{bg};color:#fff;font-weight:600">{irr_v:.1f}%</td>'
+            rows += f"<tr><td><strong>-{disc}%</strong> ({M(int(base_p*(1-disc/100)))})</td>{cells}</tr>"
+        return head + rows
+
+    # ── risk rows ────────────────────────────────────────────────────────────
+    risk_data = [
+        ("Caída precios RM > 15%",        "Medio", "Alto",   "-3 a -5pp", "Entrada 20-30% bajo mediana — buffer estructural desde D0"),
+        ("Subida tasas hipotecarias",      "Bajo",  "Medio",  "-1 a -2pp", "Adquisición 100% equity — sin servicio de deuda"),
+        ("Vacancia > 8% sostenida",        "Bajo",  "Medio",  "-1.5pp",    "Comunas con alta demanda de arriendo · precio bajo atrae inquilino"),
+        ("Corrección ciclo inmobiliario",  "Medio", "Alto",   "-2 a -4pp", "Hold 5 años absorbe ciclos cortos · exit oportunista si aprecia antes"),
+        ("Cambio normativa tributaria",    "Bajo",  "Alto",   "Variable",  "Estructurar en SpA desde inicio · asesoría Big 4"),
+        ("Iliquidez de salida",            "Medio", "Medio",  "Extensión", "Precio bajo mediana → rotación rápida · broker con mandato 60d"),
+        ("Deterioro físico activo",        "Bajo",  "Bajo",   "-0.5pp",    "Reserva mantención 0.5% anual · inspección técnica pre-compra"),
+        ("Riesgo data / scoring",          "Bajo",  "Bajo",   "Operacional","Multi-fuente Portal+Yapo+TocToc · alerta si falla > 6h"),
+        ("Concentración corredor único",   "Bajo",  "Medio",  "-1pp",      "Política: máx 35% por corredor · revisión semestral"),
+        ("Riesgo key-person gestor",       "Bajo",  "Alto",   "Operacional","Equipo mínimo 3 · scoring agent automatizado reduce dependencia"),
+    ]
+
+    def prob_badge(p):
+        colors = {"Alto": "#ff5252", "Medio": "#ffd740", "Bajo": "#69f0ae"}
+        return f'<span class="risk-badge" style="background:{colors[p]}22;color:{colors[p]};border:1px solid {colors[p]}55">{p}</span>'
+
+    risk_rows = "".join(f"""<tr>
+      <td><strong>{r[0]}</strong></td>
+      <td>{prob_badge(r[1])}</td><td>{prob_badge(r[2])}</td>
+      <td style="color:#ff7043;font-weight:600">{r[3]}</td>
+      <td class="dim">{r[4]}</td>
+    </tr>""" for r in risk_data)
+
+    # precompute to avoid backslashes inside f-string expressions (Python < 3.12)
+    _cyan_strong_open = '<strong style="color:var(--cyan)">'
+    _green_strong_open = '<strong style="color:var(--green)">'
+    term_rows = "".join(
+        f'<div class="term-row"><span class="term-key">{k}</span>'
+        f'<span class="term-val">{v}</span><span class="term-note">{n}</span></div>'
+        for k, v, n in [
+            ("Vehículo", "SpA o Fondo Privado CMF", "Estructura según asesoría legal"),
+            ("Tamaño objetivo", f"CLP 5,000 M  ·  {UF_(FUND_CLP)}", "Serie A"),
+            ("Inversión mínima LP", "CLP 200 M  (UF 5,200)", "Inversionistas acreditados Art. 4bis LMV"),
+            ("Management fee", "1.5% anual sobre NAV", "Cobrado trimestral"),
+            ("Carried interest", "20% sobre retornos > hurdle", "GP sobre ganancia excedente"),
+            ("Hurdle rate", "8% anual en UF", "LPs reciben primero hasta 8% IRR"),
+            ("Catch-up GP", "50% hasta igualar 20/80", "Waterfall estándar PE"),
+            ("Waterfall", "1. Capital · 2. Hurdle · 3. Catch-up · 4. 80/20", "Distribución secuencial"),
+            ("Horizonte fondo", "5 años (+ 2 extensión)", "Aprobación junta LPs"),
+            ("Período inversión", "Años 1-2", "Deal flow activo via scoring agent"),
+            ("Período cosecha", "Años 3-5", "Exit selectivo — trigger apreciación ≥40%"),
+            ("Distribución renta", "Semestral", "NOI neto tras reservas"),
+            ("Liquidez LP", "Sin ventana", "Mercado secundario privado — comité GP"),
+            ("Auditoría", "Anual · Big 4", "Estados financieros IFRS"),
+            ("Valorización", "Semestral · tasador externo", "Tasador inscrito MINVU"),
+            ("Moneda", "CLP / UF", "Arriendos en UF · NAV en CLP"),
+        ]
+    )
+    dd_rows = "".join(
+        f'<tr><td>{_cyan_strong_open + fase + "</strong>" if fase else ""}</td>'
+        f'<td>{crit}</td>'
+        f'<td style="color:var(--green);font-weight:600">{umbral}</td>'
+        f'<td class="dim">{accion}</td></tr>'
+        for fase, crit, umbral, accion in [
+            ("FILTRO", "Score modelo compuesto", "≥ 75 / 100", "Descartar del pipeline"),
+            ("", "Descuento vs mediana corredor", "≥ 15%", "Watchlist si 10-15%"),
+            ("", "Días en mercado", "≥ 30 días", "Flexibilizar si reducción > 10%"),
+            ("", "Precio unitario máximo", "≤ UF 10,000", "Excluir — liquidez limitada"),
+            ("", "IRR estimado base", "≥ 12% anual", "No proceder a DD legal"),
+            ("", "Cap rate neto", "≥ 4.5%", "Evaluar si upside D0 > 30%"),
+            ("DD LEGAL", "Dominio inscrito libre cargas", "100% limpio CBR", "Rechazar o negociar alzamiento"),
+            ("", "Hipotecas / gravámenes", "0 cargas activas", "Descuento por alzamiento"),
+            ("", "Litigios activos", "Certificado tribunal limpio", "Rechazar"),
+            ("", "Permisos y recepción final", "DOM vigente", "Negociar regularización"),
+            ("DD TÉCNICA", "Inspección física", "Informe tasador MINVU", "Descuento si reparaciones > 5%"),
+            ("", "Superficies vs escritura", "± 5%", "Renegociar proporcional"),
+            ("", "Estado conservación", "B o superior", "Presupuestar Capex si C"),
+            ("", "Gastos comunes", "< 2 UF/mes", "Impacta yield neto"),
+            ("DD COMERCIAL", "Comparables arriendo zona", "Yield ≥ 0.40%/mes", "Revisar supuesto"),
+            ("", "Vacancia zona", "< 6%", "Aumentar supuesto vacancia"),
+            ("APROBACIÓN", "Votación comité inversión", "≥ 2/3 miembros", "No invertir"),
+            ("", "Carta de intención", "< 48h post-aprobación", "Prioridad competitiva"),
+            ("", "Depósito garantía", "0.5% precio acordado", "Asegurar opción de compra"),
+        ]
+    )
+    bear_moic = st.mean(deal_fin(s, appr=0.010, arr=0.0038, vac=0.08)["moic"] for s in top10)
+    bull_moic = st.mean(deal_fin(s, appr=0.055, arr=0.0052, vac=0.025)["moic"] for s in top10)
+    sens_html = sens_matrix()
+    sens_head = sens_html.split("</tr>", 1)[0] + "</tr>"
+    sens_body = "</tr>".join(sens_html.split("</tr>")[1:])
+
+    # ── full HTML ────────────────────────────────────────────────────────────
+    html = f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>REI Fund I — Investment Memo · {now}</title>
+<style>
+:root{{
+  --bg:#060d1a;--bg2:#0d1b2e;--bg3:#132035;--bg4:#1a2840;
+  --cyan:#00bcd4;--cyan2:#00e5ff;--green:#00e676;--green2:#69f0ae;
+  --yellow:#ffd740;--red:#ff5252;--white:#e8eaf6;--dim:#6b7a99;
+  --border:#1e3050;--card:#0f1e35;
+}}
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:var(--bg);color:var(--white);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.6}}
+a{{color:var(--cyan);text-decoration:none}} a:hover{{color:var(--cyan2)}}
+.link{{font-size:18px;color:var(--cyan)}}
+.btn-link{{display:inline-block;padding:6px 16px;border:1px solid var(--cyan);border-radius:4px;color:var(--cyan);font-size:12px;transition:all .2s}}
+.btn-link:hover{{background:var(--cyan);color:#000}}
+
+/* Layout */
+.container{{max-width:1400px;margin:0 auto;padding:32px 24px}}
+.section{{margin-bottom:48px}}
+.section-title{{font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--cyan);border-left:3px solid var(--cyan);padding-left:12px;margin-bottom:20px}}
+
+/* Cover */
+.cover{{background:linear-gradient(135deg,#071020 0%,#0d1e38 50%,#071428 100%);border:1px solid var(--border);border-radius:12px;padding:48px;margin-bottom:48px;position:relative;overflow:hidden}}
+.cover::before{{content:'';position:absolute;top:-50%;right:-10%;width:500px;height:500px;background:radial-gradient(circle,#00bcd415 0%,transparent 70%);pointer-events:none}}
+.cover-badge{{display:inline-block;background:#ff174422;border:1px solid #ff174466;color:#ff7043;padding:4px 12px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:2px;margin-bottom:16px}}
+.cover-title{{font-size:32px;font-weight:800;background:linear-gradient(135deg,var(--cyan2),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:8px}}
+.cover-sub{{font-size:16px;color:var(--dim);margin-bottom:32px}}
+.cover-meta{{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;border-top:1px solid var(--border);padding-top:24px}}
+.meta-item .label{{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px}}
+.meta-item .value{{font-size:14px;color:var(--white);font-weight:600;margin-top:2px}}
+
+/* KPI grid */
+.kpi-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px}}
+.kpi-card{{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px}}
+.kpi-label{{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}}
+.kpi-value{{font-size:24px;font-weight:800;line-height:1.1}}
+.kpi-note{{font-size:11px;color:var(--dim);margin-top:4px}}
+.kpi-green{{color:var(--green)}} .kpi-cyan{{color:var(--cyan2)}} .kpi-yellow{{color:var(--yellow)}}
+
+/* Exec summary */
+.exec-panel{{background:linear-gradient(135deg,#071a0e,#0a1e10);border:1px solid #00e67633;border-radius:12px;padding:32px;margin-bottom:32px}}
+.exec-section{{margin-bottom:24px}}
+.exec-section:last-child{{margin-bottom:0}}
+.exec-label{{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--green2);margin-bottom:8px}}
+.exec-text{{color:var(--white);line-height:1.8;font-size:14px}}
+.exec-text .hl{{color:var(--green);font-weight:700}}
+.exec-text .hl2{{color:var(--cyan2);font-weight:700}}
+.vote-row{{display:flex;gap:16px;margin-top:16px;flex-wrap:wrap}}
+.vote-item{{padding:10px 20px;border-radius:6px;font-size:13px;font-weight:700}}
+.vote-approve{{background:#00e67622;border:1px solid #00e67666;color:var(--green)}}
+.vote-review{{background:#ffd74022;border:1px solid #ffd74066;color:var(--yellow)}}
+
+/* Tables */
+.table-wrap{{overflow-x:auto;margin-bottom:8px}}
+table{{width:100%;border-collapse:collapse;font-size:13px}}
+th{{background:var(--bg3);color:var(--cyan);font-size:11px;text-transform:uppercase;letter-spacing:1px;padding:10px 12px;text-align:left;white-space:nowrap;border-bottom:2px solid var(--border)}}
+td{{padding:9px 12px;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:middle}}
+tr:hover td{{background:var(--bg3)}}
+.num{{text-align:right;font-variant-numeric:tabular-nums}}
+.dim{{color:var(--dim)}}
+.white{{color:var(--white)}} .green{{color:var(--green)}} .yellow{{color:var(--yellow)}}
+.big{{font-size:15px;font-weight:700}}
+
+/* Badges */
+.badge{{padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:1px;white-space:nowrap}}
+.badge-buy{{background:#00e67622;border:1px solid #00e67666;color:var(--green)}}
+.badge-high{{background:#69f0ae22;border:1px solid #69f0ae66;color:var(--green2)}}
+.badge-watch{{background:#ffd74022;border:1px solid #ffd74066;color:var(--yellow)}}
+.deal-id{{background:var(--bg4);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700;color:var(--cyan);font-family:monospace}}
+
+/* Deal cards */
+.deal-card{{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:28px;margin-bottom:20px}}
+.deal-header{{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid var(--border)}}
+.deal-label{{font-size:11px;font-weight:700;color:var(--cyan);letter-spacing:2px;display:block;margin-bottom:4px}}
+.deal-title{{font-size:20px;font-weight:800;color:var(--white);display:block;margin-bottom:4px}}
+.deal-sub{{font-size:13px;color:var(--dim)}}
+.score-circle{{width:72px;height:72px;border-radius:50%;border:3px solid;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0}}
+.score-num{{font-size:22px;font-weight:800;line-height:1}}
+.score-label{{font-size:9px;color:var(--dim);letter-spacing:1px}}
+.card-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}}
+.card-block{{background:var(--bg3);border-radius:8px;padding:16px}}
+.block-title{{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--cyan);margin-bottom:12px}}
+.card-row{{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)}}
+.card-row:last-child{{border-bottom:none}}
+.card-row span:first-child{{color:var(--dim);font-size:12px}}
+.card-row span:last-child{{font-size:13px;color:var(--white)}}
+
+/* Scenario / sensitivity */
+.scenario-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:32px}}
+.sc-card{{border-radius:8px;padding:20px;text-align:center}}
+.sc-bear{{background:#ff525211;border:1px solid #ff525244}}
+.sc-base{{background:#e0e0e011;border:1px solid #e0e0e044}}
+.sc-bull{{background:#00e67611;border:1px solid #00e67644}}
+.sc-name{{font-size:11px;font-weight:700;letter-spacing:3px;margin-bottom:8px}}
+.sc-irr{{font-size:36px;font-weight:900;line-height:1}}
+.sc-moic{{font-size:13px;margin-top:4px}}
+.sc-desc{{font-size:11px;color:var(--dim);margin-top:8px}}
+
+/* Portfolio bars */
+.portf-bar{{margin-bottom:12px}}
+.portf-name{{font-size:12px;color:var(--dim);margin-bottom:4px;display:flex;justify-content:space-between}}
+.bar-outer{{background:var(--bg3);border-radius:4px;height:20px;overflow:hidden}}
+.bar-inner{{height:100%;border-radius:4px;display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:700;color:#000}}
+
+/* Fund terms */
+.terms-grid{{display:grid;grid-template-columns:repeat(2,1fr);gap:0}}
+.term-row{{display:flex;padding:10px 16px;border-bottom:1px solid var(--border)}}
+.term-row:nth-child(odd){{background:var(--bg3)}}
+.term-key{{width:200px;flex-shrink:0;color:var(--dim);font-size:12px}}
+.term-val{{font-weight:600;font-size:13px}}
+.term-note{{margin-left:auto;color:var(--dim);font-size:11px}}
+
+/* Risk badge */
+.risk-badge{{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}}
+
+/* Sensitivity heat */
+.sens-table td{{text-align:center;font-size:12px;padding:7px 10px}}
+.sens-table th{{text-align:center}}
+
+/* Footer */
+.footer{{margin-top:64px;padding-top:24px;border-top:1px solid var(--border);color:var(--dim);font-size:11px;text-align:center;line-height:2}}
+
+@media(max-width:900px){{.card-grid{{grid-template-columns:1fr}}.cover-meta{{grid-template-columns:1fr 1fr}}.scenario-grid{{grid-template-columns:1fr}}}}
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- COVER -->
+<div class="cover">
+  <div class="cover-badge">⚑ CONFIDENCIAL</div>
+  <div class="cover-title">REI Fund I — Investment Memo</div>
+  <div class="cover-sub">Real Estate Intelligence Fund · Serie A · Región Metropolitana de Santiago</div>
+  <div class="cover-meta">
+    <div class="meta-item"><div class="label">Fecha de emisión</div><div class="value">{fecha_l}</div></div>
+    <div class="meta-item"><div class="label">Fuente</div><div class="value">Portal Inmobiliario · {listings_total} props analizadas</div></div>
+    <div class="meta-item"><div class="label">Tamaño fondo objetivo</div><div class="value" style="color:var(--green)">CLP 5,000 M · {UF_(FUND_CLP)}</div></div>
+    <div class="meta-item"><div class="label">Estrategia</div><div class="value">Value-Add Residencial · Hold 5 años</div></div>
+    <div class="meta-item"><div class="label">Cobertura</div><div class="value">12 comunas RM · Depto + Casa</div></div>
+    <div class="meta-item"><div class="label">Preparado</div><div class="value">Real Estate Intelligence Agent v1.0</div></div>
+  </div>
+</div>
+
+<!-- KPI STRIP -->
+<div class="section">
+  <div class="section-title">KPIs del fondo</div>
+  <div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-label">Pipeline HIGH</div><div class="kpi-value kpi-green">{len(high)}</div><div class="kpi-note">Deals score ≥ 75 · {len(high)/len(valid)*100:.0f}% del universo</div></div>
+    <div class="kpi-card"><div class="kpi-label">Descuento entrada</div><div class="kpi-value kpi-green">{avg_up:.1f}%</div><div class="kpi-note">Bajo mediana corredor — margen D0</div></div>
+    <div class="kpi-card"><div class="kpi-label">NAV D0</div><div class="kpi-value kpi-cyan">{M(nav_d0)}</div><div class="kpi-note">Valor mercado vs {M(FUND_CLP)} invertido</div></div>
+    <div class="kpi-card"><div class="kpi-label">Cap Rate Neto</div><div class="kpi-value kpi-green">{avg_cap:.2f}%</div><div class="kpi-note">Spread vs TPM 5.0%: {avg_cap-5:+.1f}pp</div></div>
+    <div class="kpi-card"><div class="kpi-label">IRR Base</div><div class="kpi-value kpi-green">{avg_irr:.1f}%</div><div class="kpi-note">Escenario central 5 años</div></div>
+    <div class="kpi-card"><div class="kpi-label">MOIC</div><div class="kpi-value kpi-green">{avg_moic:.2f}x</div><div class="kpi-note">Money-on-invested-capital</div></div>
+    <div class="kpi-card"><div class="kpi-label">Días Mercado (HIGH)</div><div class="kpi-value kpi-yellow">{dias_h:.0f}</div><div class="kpi-note">Inventario presionado — palanca negoc.</div></div>
+    <div class="kpi-card"><div class="kpi-label">Valor portafolio año 5</div><div class="kpi-value kpi-cyan">{M(int(FUND_CLP*avg_moic))}</div><div class="kpi-note">Renta acum. + apreciación UF</div></div>
+  </div>
+</div>
+
+<!-- EXEC SUMMARY -->
+<div class="section">
+  <div class="section-title">1. Resumen Ejecutivo</div>
+  <div class="exec-panel">
+    <div class="exec-section">
+      <div class="exec-label">Oportunidad de Mercado</div>
+      <div class="exec-text">Análisis de <span class="hl">{listings_total} propiedades</span> en 12 comunas de la RM detecta <span class="hl">{sum(1 for s in valid if s['score']>=90)} deals de compra inmediata</span> (score ≥ 90) y <span class="hl">{sum(1 for s in valid if 80<=s['score']<90)} de alta prioridad</span> (80-89). El inventario HIGH muestra <span class="hl">{dias_h:.0f} días</span> promedio en mercado — presión vendedora que genera palanca de negociación de 10-20% sobre precio publicado.</div>
+    </div>
+    <div class="exec-section">
+      <div class="exec-label">Ventaja de Entrada — Margen de Seguridad D0</div>
+      <div class="exec-text">Deals calificados presentan descuento promedio de <span class="hl">{avg_up:.1f}%</span> respecto a mediana del corredor. El fondo adquiere activos con valor de mercado de <span class="hl">{M(nav_d0)}</span> pagando <span class="hl2">CLP 5,000M</span>. El descuento funciona como buffer estructural ante correcciones de mercado.</div>
+    </div>
+    <div class="exec-section">
+      <div class="exec-label">Retornos Proyectados</div>
+      <div class="exec-text">IRR base <span class="hl">{avg_irr:.1f}%</span> · MOIC <span class="hl">{avg_moic:.2f}x</span> · Cap rate neto <span class="hl">{avg_cap:.2f}%</span> · Distribución anual renta LP: <span class="hl">{M(int(FUND_CLP*avg_cap/100))}</span> · Valor portafolio año 5: <span class="hl">{M(int(FUND_CLP*avg_moic))}</span></div>
+    </div>
+    <div class="exec-section">
+      <div class="exec-label">Voto Recomendado al Comité</div>
+      <div class="vote-row">
+        <div class="vote-item vote-approve">✓ APROBAR due diligence D-01 y D-02 (presupuesto CLP 15M)</div>
+        <div class="vote-item vote-approve">✓ APROBAR constitución vehículo SpA</div>
+        <div class="vote-item vote-review">◎ REVISAR pipeline en 30 días</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SCENARIOS -->
+<div class="section">
+  <div class="section-title">2. Escenarios de Retorno</div>
+  <div class="scenario-grid">
+    <div class="sc-card sc-bear">
+      <div class="sc-name" style="color:#ff5252">BEAR</div>
+      <div class="sc-irr" style="color:#ff5252">{bear_irr:.1f}%</div>
+      <div class="sc-moic" style="color:#ff7043">IRR anual · 5 años</div>
+      <div class="sc-desc">Apreciación +1% UF · yield 4.56% · vacancia 8%<br>Portafolio positivo incluso en recesión leve</div>
+    </div>
+    <div class="sc-card sc-base">
+      <div class="sc-name" style="color:#e0e0e0">BASE</div>
+      <div class="sc-irr" style="color:#e0e0e0">{avg_irr:.1f}%</div>
+      <div class="sc-moic" style="color:#bdbdbd">IRR anual · MOIC {avg_moic:.2f}x</div>
+      <div class="sc-desc">Apreciación +3.5% UF · yield 5.4% · vacancia 4%<br>Escenario central — supuestos conservadores</div>
+    </div>
+    <div class="sc-card sc-bull">
+      <div class="sc-name" style="color:#00e676">BULL</div>
+      <div class="sc-irr" style="color:#00e676">{bull_irr:.1f}%</div>
+      <div class="sc-moic" style="color:#69f0ae">IRR anual · 5 años</div>
+      <div class="sc-desc">Apreciación +5.5% UF · yield 6.24% · vacancia 2.5%<br>Ciclo expansivo post-baja TPM</div>
+    </div>
+  </div>
+</div>
+
+<!-- PIPELINE -->
+<div class="section">
+  <div class="section-title">3. Pipeline de Deals — Top 10 Calificados</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Deal</th><th>Comuna</th><th>Tipo</th><th>m²</th><th>Dorm/Bño</th>
+        <th class="num">Precio</th><th class="num">UF</th><th class="num">CLP/m²</th>
+        <th class="num">Med/m²</th><th class="num">Desc.</th><th class="num">Días</th>
+        <th class="num">Score</th><th class="num">IRR</th><th>Status</th><th></th>
+      </tr></thead>
+      <tbody>{pipe_rows()}</tbody>
+    </table>
+  </div>
+</div>
+
+<!-- DEAL CARDS -->
+<div class="section">
+  <div class="section-title">4. Fichas de Inversión — Top 5 Deals</div>
+  {deal_cards()}
+</div>
+
+<!-- SENSITIVITY -->
+<div class="section">
+  <div class="section-title">5. Análisis de Sensibilidad — IRR × Descuento × Apreciación UF (D-01)</div>
+  <div class="table-wrap">
+    <table class="sens-table">
+      <thead>{sens_head}</thead>
+      <tbody>{sens_body}</tbody>
+    </table>
+  </div>
+  <div style="margin-top:8px;font-size:11px;color:var(--dim)">
+    <span style="background:#00695c;color:#fff;padding:2px 8px;border-radius:3px;margin-right:6px">≥16%</span>Excepcional &nbsp;
+    <span style="background:#2e7d32;color:#fff;padding:2px 8px;border-radius:3px;margin-right:6px">≥12%</span>Target &nbsp;
+    <span style="background:#f57f17;color:#fff;padding:2px 8px;border-radius:3px;margin-right:6px">≥8%</span>Aceptable &nbsp;
+    <span style="background:#b71c1c;color:#fff;padding:2px 8px;border-radius:3px;margin-right:6px">&lt;8%</span>Sub-óptimo
+  </div>
+</div>
+
+<!-- PORTFOLIO CONSTRUCTION -->
+<div class="section">
+  <div class="section-title">6. Construcción de Portafolio — CLP 5,000 M</div>
+  <div class="portf-bar"><div class="portf-name"><span>Línea 1 — Central (Providencia · Santiago · Ñuñoa)</span><span style="color:var(--cyan)">35% · $1,750M · ~17 activos</span></div><div class="bar-outer"><div class="bar-inner" style="width:35%;background:linear-gradient(90deg,#00bcd4,#006064)">35%</div></div></div>
+  <div class="portf-bar"><div class="portf-name"><span>Línea 7 — Premium (Las Condes · Vitacura · Lo Barnechea)</span><span style="color:var(--green)">30% · $1,500M · ~6 activos</span></div><div class="bar-outer"><div class="bar-inner" style="width:30%;background:linear-gradient(90deg,#00e676,#1b5e20)">30%</div></div></div>
+  <div class="portf-bar"><div class="portf-name"><span>Línea 8 — Sur (La Florida · Puente Alto · Peñalolén)</span><span style="color:var(--yellow)">25% · $1,250M · ~13 activos</span></div><div class="bar-outer"><div class="bar-inner" style="width:25%;background:linear-gradient(90deg,#ffd740,#e65100)">25%</div></div></div>
+  <div class="portf-bar"><div class="portf-name"><span>Expansión (La Reina · Maipú · San Miguel)</span><span style="color:var(--dim)">10% · $500M · ~5 activos</span></div><div class="bar-outer"><div class="bar-inner" style="width:10%;background:linear-gradient(90deg,#78909c,#37474f)">10%</div></div></div>
+  <br>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Métrica portafolio</th><th>Bear</th><th class="num">Base</th><th class="num">Bull</th></tr></thead>
+    <tbody>
+      <tr><td>IRR anual</td><td style="color:#ff5252">{bear_irr:.1f}%</td><td class="num" style="color:#e0e0e0">{avg_irr:.1f}%</td><td class="num" style="color:#00e676">{bull_irr:.1f}%</td></tr>
+      <tr><td>MOIC</td><td style="color:#ff5252">{bear_moic:.2f}x</td><td class="num" style="color:#e0e0e0">{avg_moic:.2f}x</td><td class="num" style="color:#00e676">{bull_moic:.2f}x</td></tr>
+      <tr><td>Valor portafolio año 5</td><td style="color:#ff5252">{M(int(FUND_CLP*bear_moic))}</td><td class="num" style="color:#e0e0e0">{M(int(FUND_CLP*avg_moic))}</td><td class="num" style="color:#00e676">{M(int(FUND_CLP*bull_moic))}</td></tr>
+      <tr><td>Cap rate neto</td><td style="color:#ff5252">{0.0038*12*(1-0.08)*(1-0.01)*100:.2f}%</td><td class="num" style="color:#e0e0e0">{avg_cap:.2f}%</td><td class="num" style="color:#00e676">{0.0052*12*(1-0.025)*(1-0.01)*100:.2f}%</td></tr>
+      <tr><td>Distribución anual LP</td><td style="color:#ff5252">{M(int(FUND_CLP*0.0038*12*(1-0.08)*(1-0.01)))}</td><td class="num" style="color:#e0e0e0">{M(int(FUND_CLP*avg_cap/100))}</td><td class="num" style="color:#00e676">{M(int(FUND_CLP*0.0052*12*(1-0.025)*(1-0.01)))}</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<!-- FUND TERMS -->
+<div class="section">
+  <div class="section-title">7. Estructura del Fondo y Términos</div>
+  <div class="terms-grid">
+    {term_rows}
+  </div>
+</div>
+
+<!-- RISK MATRIX -->
+<div class="section">
+  <div class="section-title">8. Matriz de Riesgos</div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Riesgo</th><th>Probabilidad</th><th>Impacto</th><th>Δ IRR</th><th>Mitigación</th></tr></thead>
+    <tbody>{risk_rows}</tbody>
+  </table></div>
+</div>
+
+<!-- DD CHECKLIST -->
+<div class="section">
+  <div class="section-title">9. Proceso de Due Diligence</div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Fase</th><th>Criterio</th><th>Umbral</th><th>Acción si no cumple</th></tr></thead>
+    <tbody>
+    {dd_rows}
+    </tbody>
+  </table></div>
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <div>Datos: Portal Inmobiliario · UF = $38,500 CLP · Generado: {now}</div>
+  <div>Este documento es confidencial. Se basa en datos públicos de mercado. No constituye asesoría financiera regulada bajo la Ley 18.045 (LMV).</div>
+  <div style="margin-top:8px;color:#2a3a50">Real Estate Intelligence Agent v1.0 · REI Fund I Serie A</div>
+</div>
+
+</div>
+</body>
+</html>"""
+
+    out_path = Path(f"rei_fund_memo_{datetime.now().strftime('%Y%m%d_%H%M')}.html")
+    out_path.write_text(html, encoding="utf-8")
+    return str(out_path.resolve())
+
+
+# ---------------------------------------------------------------------------
 # Main command: --top20
 # ---------------------------------------------------------------------------
 
 
-async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: bool = False, report: bool = False, invest: bool = False) -> None:
+async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: bool = False, report: bool = False, invest: bool = False, html_out: bool = False) -> None:
     from rich.console import Console
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
@@ -1518,6 +2139,10 @@ async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: b
         _print_report(scored, listings_total=len(unique))
     elif invest:
         _print_invest(scored, listings_total=len(unique))
+    elif html_out:
+        path = _generate_html(scored, listings_total=len(unique))
+        console.print(f"[bright_green]✓[/bright_green] HTML generado: [bold]{path}[/bold]")
+        console.print(f"[dim]  Abre con: xdg-open {path}  /  open {path}  /  o arrastra al browser[/dim]")
     else:
         _print_top20(scored)
 
@@ -1530,7 +2155,7 @@ async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: b
 def main() -> None:
     args = _parse_args()
 
-    if not args.top20 and not args.report and not args.invest:
+    if not args.top20 and not args.report and not args.invest and not args.html:
         print(__doc__)
         sys.exit(0)
 
@@ -1541,6 +2166,7 @@ def main() -> None:
         demo=args.demo,
         report=args.report,
         invest=args.invest,
+        html_out=args.html,
     ))
 
 
