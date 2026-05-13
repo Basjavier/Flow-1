@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>REI Fund I — Investment Memo · 13/05/2026 19:12</title>
+<style>
+:root{
+  --bg:#060d1a;--bg2:#0d1b2e;--bg3:#132035;--bg4:#1a2840;
+  --cyan:#00bcd4;--cyan2:#00e5ff;--green:#00e676;--green2:#69f0ae;
+  --yellow:#ffd740;--red:#ff5252;--white:#e8eaf6;--dim:#6b7a99;
+  --border:#1e3050;--card:#0f1e35;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--white);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.6}
+a{color:var(--cyan);text-decoration:none} a:hover{color:var(--cyan2)}
+.link{font-size:18px;color:var(--cyan)}
+.btn-link{display:inline-block;padding:6px 16px;border:1px solid var(--cyan);border-radius:4px;color:var(--cyan);font-size:12px;transition:all .2s}
+.btn-link:hover{background:var(--cyan);color:#000}
+
+/* Layout */
+.container{max-width:1400px;margin:0 auto;padding:32px 24px}
+.section{margin-bottom:48px}
+.section-title{font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--cyan);border-left:3px solid var(--cyan);padding-left:12px;margin-bottom:20px}
+
+/* Cover */
+.cover{background:linear-gradient(135deg,#071020 0%,#0d1e38 50%,#071428 100%);border:1px solid var(--border);border-radius:12px;padding:48px;margin-bottom:48px;position:relative;overflow:hidden}
+.cover::before{content:'';position:absolute;top:-50%;right:-10%;width:500px;height:500px;background:radial-gradient(circle,#00bcd415 0%,transparent 70%);pointer-events:none}
+.cover-badge{display:inline-block;background:#ff174422;border:1px solid #ff174466;color:#ff7043;padding:4px 12px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:2px;margin-bottom:16px}
+.cover-title{font-size:32px;font-weight:800;background:linear-gradient(135deg,var(--cyan2),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:8px}
+.cover-sub{font-size:16px;color:var(--dim);margin-bottom:32px}
+.cover-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;border-top:1px solid var(--border);padding-top:24px}
+.meta-item .label{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+.meta-item .value{font-size:14px;color:var(--white);font-weight:600;margin-top:2px}
+
+/* KPI grid */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px}
+.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px}
+.kpi-label{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.kpi-value{font-size:24px;font-weight:800;line-height:1.1}
+.kpi-note{font-size:11px;color:var(--dim);margin-top:4px}
+.kpi-green{color:var(--green)} .kpi-cyan{color:var(--cyan2)} .kpi-yellow{color:var(--yellow)}
+
+/* Exec summary */
+.exec-panel{background:linear-gradient(135deg,#071a0e,#0a1e10);border:1px solid #00e67633;border-radius:12px;padding:32px;margin-bottom:32px}
+.exec-section{margin-bottom:24px}
+.exec-section:last-child{margin-bottom:0}
+.exec-label{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--green2);margin-bottom:8px}
+.exec-text{color:var(--white);line-height:1.8;font-size:14px}
+.exec-text .hl{color:var(--green);font-weight:700}
+.exec-text .hl2{color:var(--cyan2);font-weight:700}
+.vote-row{display:flex;gap:16px;margin-top:16px;flex-wrap:wrap}
+.vote-item{padding:10px 20px;border-radius:6px;font-size:13px;font-weight:700}
+.vote-approve{background:#00e67622;border:1px solid #00e67666;color:var(--green)}
+.vote-review{background:#ffd74022;border:1px solid #ffd74066;color:var(--yellow)}
+
+/* Tables */
+.table-wrap{overflow-x:auto;margin-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--bg3);color:var(--cyan);font-size:11px;text-transform:uppercase;letter-spacing:1px;padding:10px 12px;text-align:left;white-space:nowrap;border-bottom:2px solid var(--border)}
+td{padding:9px 12px;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:middle}
+tr:hover td{background:var(--bg3)}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.dim{color:var(--dim)}
+.white{color:var(--white)} .green{color:var(--green)} .yellow{color:var(--yellow)}
+.big{font-size:15px;font-weight:700}
+
+/* Badges */
+.badge{padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:1px;white-space:nowrap}
+.badge-buy{background:#00e67622;border:1px solid #00e67666;color:var(--green)}
+.badge-high{background:#69f0ae22;border:1px solid #69f0ae66;color:var(--green2)}
+.badge-watch{background:#ffd74022;border:1px solid #ffd74066;color:var(--yellow)}
+.deal-id{background:var(--bg4);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700;color:var(--cyan);font-family:monospace}
+
+/* Deal cards */
+.deal-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:28px;margin-bottom:20px}
+.deal-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid var(--border)}
+.deal-label{font-size:11px;font-weight:700;color:var(--cyan);letter-spacing:2px;display:block;margin-bottom:4px}
+.deal-title{font-size:20px;font-weight:800;color:var(--white);display:block;margin-bottom:4px}
+.deal-sub{font-size:13px;color:var(--dim)}
+.score-circle{width:72px;height:72px;border-radius:50%;border:3px solid;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0}
+.score-num{font-size:22px;font-weight:800;line-height:1}
+.score-label{font-size:9px;color:var(--dim);letter-spacing:1px}
+.card-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.card-block{background:var(--bg3);border-radius:8px;padding:16px}
+.block-title{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--cyan);margin-bottom:12px}
+.card-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)}
+.card-row:last-child{border-bottom:none}
+.card-row span:first-child{color:var(--dim);font-size:12px}
+.card-row span:last-child{font-size:13px;color:var(--white)}
+
+/* Scenario / sensitivity */
+.scenario-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:32px}
+.sc-card{border-radius:8px;padding:20px;text-align:center}
+.sc-bear{background:#ff525211;border:1px solid #ff525244}
+.sc-base{background:#e0e0e011;border:1px solid #e0e0e044}
+.sc-bull{background:#00e67611;border:1px solid #00e67644}
+.sc-name{font-size:11px;font-weight:700;letter-spacing:3px;margin-bottom:8px}
+.sc-irr{font-size:36px;font-weight:900;line-height:1}
+.sc-moic{font-size:13px;margin-top:4px}
+.sc-desc{font-size:11px;color:var(--dim);margin-top:8px}
+
+/* Portfolio bars */
+.portf-bar{margin-bottom:12px}
+.portf-name{font-size:12px;color:var(--dim);margin-bottom:4px;display:flex;justify-content:space-between}
+.bar-outer{background:var(--bg3);border-radius:4px;height:20px;overflow:hidden}
+.bar-inner{height:100%;border-radius:4px;display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:700;color:#000}
+
+/* Fund terms */
+.terms-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:0}
+.term-row{display:flex;padding:10px 16px;border-bottom:1px solid var(--border)}
+.term-row:nth-child(odd){background:var(--bg3)}
+.term-key{width:200px;flex-shrink:0;color:var(--dim);font-size:12px}
+.term-val{font-weight:600;font-size:13px}
+.term-note{margin-left:auto;color:var(--dim);font-size:11px}
+
+/* Risk badge */
+.risk-badge{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+
+/* Sensitivity heat */
+.sens-table td{text-align:center;font-size:12px;padding:7px 10px}
+.sens-table th{text-align:center}
+
+/* Footer */
+.footer{margin-top:64px;padding-top:24px;border-top:1px solid var(--border);color:var(--dim);font-size:11px;text-align:center;line-height:2}
+
+@media(max-width:900px){.card-grid{grid-template-columns:1fr}.cover-meta{grid-template-columns:1fr 1fr}.scenario-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- COVER -->
+<div class="cover">
+  <div class="cover-badge">⚑ CONFIDENCIAL</div>
+  <div class="cover-title">REI Fund I — Investment Memo</div>
+  <div class="cover-sub">Real Estate Intelligence Fund · Serie A · Región Metropolitana de Santiago</div>
+  <div class="cover-meta">
+    <div class="meta-item"><div class="label">Fecha de emisión</div><div class="value">13 de May de 2026</div></div>
+    <div class="meta-item"><div class="label">Fuente</div><div class="value">Portal Inmobiliario · 71 props analizadas</div></div>
+    <div class="meta-item"><div class="label">Tamaño fondo objetivo</div><div class="value" style="color:var(--green)">CLP 5,000 M · UF 129,870</div></div>
+    <div class="meta-item"><div class="label">Estrategia</div><div class="value">Value-Add Residencial · Hold 5 años</div></div>
+    <div class="meta-item"><div class="label">Cobertura</div><div class="value">12 comunas RM · Depto + Casa</div></div>
+    <div class="meta-item"><div class="label">Preparado</div><div class="value">Real Estate Intelligence Agent v1.0</div></div>
+  </div>
+</div>
+
+<!-- KPI STRIP -->
+<div class="section">
+  <div class="section-title">KPIs del fondo</div>
+  <div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-label">Pipeline HIGH</div><div class="kpi-value kpi-green">41</div><div class="kpi-note">Deals score ≥ 75 · 62% del universo</div></div>
+    <div class="kpi-card"><div class="kpi-label">Descuento entrada</div><div class="kpi-value kpi-green">31.5%</div><div class="kpi-note">Bajo mediana corredor — margen D0</div></div>
+    <div class="kpi-card"><div class="kpi-label">NAV D0</div><div class="kpi-value kpi-cyan">$6573M</div><div class="kpi-note">Valor mercado vs $5000M invertido</div></div>
+    <div class="kpi-card"><div class="kpi-label">Cap Rate Neto</div><div class="kpi-value kpi-green">5.13%</div><div class="kpi-note">Spread vs TPM 5.0%: +0.1pp</div></div>
+    <div class="kpi-card"><div class="kpi-label">IRR Base</div><div class="kpi-value kpi-green">7.5%</div><div class="kpi-note">Escenario central 5 años</div></div>
+    <div class="kpi-card"><div class="kpi-label">MOIC</div><div class="kpi-value kpi-green">1.40x</div><div class="kpi-note">Money-on-invested-capital</div></div>
+    <div class="kpi-card"><div class="kpi-label">Días Mercado (HIGH)</div><div class="kpi-value kpi-yellow">65</div><div class="kpi-note">Inventario presionado — palanca negoc.</div></div>
+    <div class="kpi-card"><div class="kpi-label">Valor portafolio año 5</div><div class="kpi-value kpi-cyan">$6977M</div><div class="kpi-note">Renta acum. + apreciación UF</div></div>
+  </div>
+</div>
+
+<!-- EXEC SUMMARY -->
+<div class="section">
+  <div class="section-title">1. Resumen Ejecutivo</div>
+  <div class="exec-panel">
+    <div class="exec-section">
+      <div class="exec-label">Oportunidad de Mercado</div>
+      <div class="exec-text">Análisis de <span class="hl">71 propiedades</span> en 12 comunas de la RM detecta <span class="hl">7 deals de compra inmediata</span> (score ≥ 90) y <span class="hl">20 de alta prioridad</span> (80-89). El inventario HIGH muestra <span class="hl">65 días</span> promedio en mercado — presión vendedora que genera palanca de negociación de 10-20% sobre precio publicado.</div>
+    </div>
+    <div class="exec-section">
+      <div class="exec-label">Ventaja de Entrada — Margen de Seguridad D0</div>
+      <div class="exec-text">Deals calificados presentan descuento promedio de <span class="hl">31.5%</span> respecto a mediana del corredor. El fondo adquiere activos con valor de mercado de <span class="hl">$6573M</span> pagando <span class="hl2">CLP 5,000M</span>. El descuento funciona como buffer estructural ante correcciones de mercado.</div>
+    </div>
+    <div class="exec-section">
+      <div class="exec-label">Retornos Proyectados</div>
+      <div class="exec-text">IRR base <span class="hl">7.5%</span> · MOIC <span class="hl">1.40x</span> · Cap rate neto <span class="hl">5.13%</span> · Distribución anual renta LP: <span class="hl">$256.6M</span> · Valor portafolio año 5: <span class="hl">$6977M</span></div>
+    </div>
+    <div class="exec-section">
+      <div class="exec-label">Voto Recomendado al Comité</div>
+      <div class="vote-row">
+        <div class="vote-item vote-approve">✓ APROBAR due diligence D-01 y D-02 (presupuesto CLP 15M)</div>
+        <div class="vote-item vote-approve">✓ APROBAR constitución vehículo SpA</div>
+        <div class="vote-item vote-review">◎ REVISAR pipeline en 30 días</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SCENARIOS -->
+<div class="section">
+  <div class="section-title">2. Escenarios de Retorno</div>
+  <div class="scenario-grid">
+    <div class="sc-card sc-bear">
+      <div class="sc-name" style="color:#ff5252">BEAR</div>
+      <div class="sc-irr" style="color:#ff5252">4.3%</div>
+      <div class="sc-moic" style="color:#ff7043">IRR anual · 5 años</div>
+      <div class="sc-desc">Apreciación +1% UF · yield 4.56% · vacancia 8%<br>Portafolio positivo incluso en recesión leve</div>
+    </div>
+    <div class="sc-card sc-base">
+      <div class="sc-name" style="color:#e0e0e0">BASE</div>
+      <div class="sc-irr" style="color:#e0e0e0">7.5%</div>
+      <div class="sc-moic" style="color:#bdbdbd">IRR anual · MOIC 1.40x</div>
+      <div class="sc-desc">Apreciación +3.5% UF · yield 5.4% · vacancia 4%<br>Escenario central — supuestos conservadores</div>
+    </div>
+    <div class="sc-card sc-bull">
+      <div class="sc-name" style="color:#00e676">BULL</div>
+      <div class="sc-irr" style="color:#00e676">10.1%</div>
+      <div class="sc-moic" style="color:#69f0ae">IRR anual · 5 años</div>
+      <div class="sc-desc">Apreciación +5.5% UF · yield 6.24% · vacancia 2.5%<br>Ciclo expansivo post-baja TPM</div>
+    </div>
+  </div>
+</div>
+
+<!-- PIPELINE -->
+<div class="section">
+  <div class="section-title">3. Pipeline de Deals — Top 10 Calificados</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Deal</th><th>Comuna</th><th>Tipo</th><th>m²</th><th>Dorm/Bño</th>
+        <th class="num">Precio</th><th class="num">UF</th><th class="num">CLP/m²</th>
+        <th class="num">Med/m²</th><th class="num">Desc.</th><th class="num">Días</th>
+        <th class="num">Score</th><th class="num">IRR</th><th>Status</th><th></th>
+      </tr></thead>
+      <tbody>
+            <tr>
+              <td><span class="deal-id">D-01</span></td>
+              <td><strong>Santiago</strong></td>
+              <td>Departamento</td>
+              <td>38 m²</td>
+              <td>1d/1b</td>
+              <td class="num">$46.2M</td>
+              <td class="num">UF 1,200</td>
+              <td class="num">$1,215,789</td>
+              <td class="num">$1,480,769</td>
+              <td class="num" style="color:#00e676;font-weight:700">+17.9%</td>
+              <td class="num">110</td>
+              <td class="num" style="color:#00e676;font-weight:700">94.0</td>
+              <td class="num" style="color:#69f0ae">7.5%</td>
+              <td><span class="badge badge-buy">COMPRA YA</span></td>
+              <td><a href="https://www.portalinmobiliario.com/MLC-demo-0024" target="_blank" class="link">↗</a></td>
+            </tr>
+            <tr>
+              <td><span class="deal-id">D-02</span></td>
+              <td><strong>La Florida</strong></td>
+              <td>Departamento</td>
+              <td>55 m²</td>
+              <td>2d/1b</td>
+              <td class="num">$61.6M</td>
+              <td class="num">UF 1,600</td>
+              <td class="num">$1,120,000</td>
+              <td class="num">$1,393,966</td>
+              <td class="num" style="color:#00e676;font-weight:700">+19.7%</td>
+              <td class="num">105</td>
+              <td class="num" style="color:#00e676;font-weight:700">94.0</td>
+              <td class="num" style="color:#69f0ae">7.5%</td>
+              <td><span class="badge badge-buy">COMPRA YA</span></td>
+              <td><a href="https://www.portalinmobiliario.com/MLC-demo-0035" target="_blank" class="link">↗</a></td>
+            </tr>
+            <tr>
+              <td><span class="deal-id">D-03</span></td>
+              <td><strong>Las Condes</strong></td>
+              <td>Departamento</td>
+              <td>55 m²</td>
+              <td>2d/1b</td>
+              <td class="num">$114.7M</td>
+              <td class="num">UF 2,980</td>
+              <td class="num">$2,086,000</td>
+              <td class="num">$2,830,208</td>
+              <td class="num" style="color:#00e676;font-weight:700">+26.3%</td>
+              <td class="num">95</td>
+              <td class="num" style="color:#00e676;font-weight:700">92.5</td>
+              <td class="num" style="color:#69f0ae">7.5%</td>
+              <td><span class="badge badge-buy">COMPRA YA</span></td>
+              <td><a href="https://www.portalinmobiliario.com/MLC-demo-0005" target="_blank" class="link">↗</a></td>
+            </tr>
+            <tr>
+              <td><span class="deal-id">D-04</span></td>
+              <td><strong>Providencia</strong></td>
+              <td>Departamento</td>
+              <td>40 m²</td>
+              <td>1d/1b</td>
+              <td class="num">$84.7M</td>
+              <td class="num">UF 2,200</td>
+              <td class="num">$2,117,500</td>
+              <td class="num">$2,502,500</td>
+              <td class="num" style="color:#00e676;font-weight:700">+15.4%</td>
+              <td class="num">100</td>
+              <td class="num" style="color:#00e676;font-weight:700">92.5</td>
+              <td class="num" style="color:#69f0ae">7.5%</td>
+              <td><span class="badge badge-buy">COMPRA YA</span></td>
+              <td><a href="https://www.portalinmobiliario.com/MLC-demo-0016" target="_blank" class="link">↗</a></td>
+            </tr>
+            <tr>
+              <td><span class="deal-id">D-05</span></td>
+              <td><strong>Lo Barnechea</strong></td>
+              <td>Departamento</td>
+              <td>72 m²</td>
+              <td>3d/2b</td>
+              <td class="num">$123.2M</td>
+              <td class="num">UF 3,200</td>
+              <td class="num">$1,711,111</td>
+              <td class="num">$2,317,404</td>
+              <td class="num" style="color:#00e676;font-weight:700">+26.2%</td>
+              <td class="num">95</td>
+              <td class="num" style="color:#00e676;font-weight:700">92.5</td>
+              <td class="num" style="color:#69f0ae">7.5%</td>
+              <td><span class="badge badge-buy">COMPRA YA</span></td>
+              <td><a href="https://www.portalinmobiliario.com/MLC-demo-0030" target="_blank" class="link">↗</a></td>
+            </tr>
+            <tr>
+              <td><span class="deal-id">D-06</span></td>
+              <td><strong>San Miguel</strong></td>
+              <td>Departamento</td>
+              <td>45 m²</td>
+              <td>1d/1b</td>
+              <td class="num">$55.8M</td>
+              <td class="num">UF 1,450</td>
+              <td class="num">$1,240,556</td>
+              <td class="num">$2,317,404</td>
+              <td class="num" style="color:#00e676;font-weight:700">+46.5%</td>
+              <td class="num">95</td>
+              <td class="num" style="color:#00e676;font-weight:700">92.5</td>
+              <td class="num" style="color:#69f0ae">7.5%</td>
+              <td><span class="badge badge-buy">COMPRA YA</span></td>
+              <td><a href="https://www.portalinmobiliario.com/MLC-demo-0051" target="_blank" class="link">↗</a></td>
+            </tr>
+            <tr>
+              <td><span class="deal-id">D-07</span></td>
+              <td><strong>La Florida</strong></td>
+              <td>Casa</td>
+              <td>90 m²</td>
+              <td>3d/2b</td>
+              <td class="num">$107.8M</td>
+              <td class="num">UF 2,800</td>
+              <td class="num">$1,197,778</td>
+              <td class="num">$3,101,389</td>
+              <td class="num" style="color:#00e676;font-weight:700">+61.4%</td>
+              <td class="num">100</td>
+              <td class="num" style="color:#00e676;font-weight:700">92.5</td>
+              <td class="num" style="color:#69f0ae">7.5%</td>
+              <td><span class="badge badge-buy">COMPRA YA</span></td>
+              <td><a href="https://www.portalinmobiliario.com/MLC-demo-0062" target="_blank" class="link">↗</a></td>
+            </tr>
+            <tr>
+              <td><span class="deal-id">D-08</span></td>
+              <td><strong>Ñuñoa</strong></td>
+              <td>Departamento</td>
+              <td>44 m²</td>
+              <td>1d/1b</td>
+              <td class="num">$75.1M</td>
+              <td class="num">UF 1,950</td>
+              <td class="num">$1,706,250</td>
+              <td class="num">$2,132,308</td>
+              <td class="num" style="color:#00e676;font-weight:700">+20.0%</td>
+              <td class="num">88</td>
+              <td class="num" style="color:#69f0ae;font-weight:700">89.5</td>
+              <td class="num" style="color:#69f0ae">7.5%</td>
+              <td><span class="badge badge-high">ALTA PRIORIDAD</span></td>
+              <td><a href="https://www.portalinmobiliario.com/MLC-demo-0020" target="_blank" class="link">↗</a></td>
+            </tr>
+            <tr>
+              <td><span class="deal-id">D-09</span></td>
+              <td><strong>Santiago</strong></td>
+              <td>Departamento</td>
+              <td>55 m²</td>
+              <td>2d/1b</td>
+              <td class="num">$63.5M</td>
+              <td class="num">UF 1,650</td>
+              <td class="num">$1,155,000</td>
+              <td class="num">$1,480,769</td>
+              <td class="num" style="color:#00e676;font-weight:700">+22.0%</td>
+              <td class="num">75</td>
+              <td class="num" style="color:#69f0ae;font-weight:700">89.5</td>
+              <td class="num" style="color:#69f0ae">7.5%</td>
+              <td><span class="badge badge-high">ALTA PRIORIDAD</span></td>
+              <td><a href="https://www.portalinmobiliario.com/MLC-demo-0026" target="_blank" class="link">↗</a></td>
+            </tr>
+            <tr>
+              <td><span class="deal-id">D-10</span></td>
+              <td><strong>Puente Alto</strong></td>
+              <td>Departamento</td>
+              <td>45 m²</td>
+              <td>1d/1b</td>
+              <td class="num">$42.4M</td>
+              <td class="num">UF 1,100</td>
+              <td class="num">$941,111</td>
+              <td class="num">$2,317,404</td>
+              <td class="num" style="color:#00e676;font-weight:700">+59.4%</td>
+              <td class="num">90</td>
+              <td class="num" style="color:#69f0ae;font-weight:700">89.5</td>
+              <td class="num" style="color:#69f0ae">7.5%</td>
+              <td><span class="badge badge-high">ALTA PRIORIDAD</span></td>
+              <td><a href="https://www.portalinmobiliario.com/MLC-demo-0041" target="_blank" class="link">↗</a></td>
+            </tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- DEAL CARDS -->
+<div class="section">
+  <div class="section-title">4. Fichas de Inversión — Top 5 Deals</div>
+  
+            <div class="deal-card">
+              <div class="deal-header">
+                <div>
+                  <span class="deal-label">D-01</span>
+                  <span class="deal-title">Departamento · Santiago</span>
+                  <span class="deal-sub">38 m² · 1 dorm · 1 baños</span>
+                </div>
+                <div class="score-circle" style="border-color:#00e676">
+                  <div class="score-num" style="color:#00e676">94</div>
+                  <div class="score-label">SCORE</div>
+                </div>
+              </div>
+              <div class="card-grid">
+                <div class="card-block">
+                  <div class="block-title">PRECIO</div>
+                  <div class="card-row"><span>Precio entrada</span><span class="white big">$46.2M <small>(UF 1,200)</small></span></div>
+                  <div class="card-row"><span>CLP/m²</span><span>$1,215,789</span></div>
+                  <div class="card-row"><span>Mediana corredor</span><span>$1,480,769/m²</span></div>
+                  <div class="card-row"><span>Descuento vs mediana</span><span class="green big">+17.9%</span></div>
+                  <div class="card-row"><span>Valor a precio mercado</span><span class="green">$56.3M</span></div>
+                  <div class="card-row"><span>Upside D0</span><span class="green big">+21.8%</span></div>
+                  <div class="card-row"><span>Reducción precio</span><span class="green">-18.0% ($10.1M ahorrado)</span></div>
+                </div>
+                <div class="card-block">
+                  <div class="block-title">TIMING</div>
+                  <div class="card-row"><span>Días en mercado</span><span class="yellow big">110 días</span></div>
+                  <div class="block-title" style="margin-top:16px">RENTA</div>
+                  <div class="card-row"><span>Arriendo neto/mes</span><span>$0.2M</span></div>
+                  <div class="card-row"><span>NOI anual</span><span>$2.4M</span></div>
+                  <div class="card-row"><span>Yield bruto</span><span>5.35%</span></div>
+                  <div class="card-row"><span>Cap rate neto</span><span class="green">5.13%</span></div>
+                </div>
+                <div class="card-block">
+                  <div class="block-title">RETORNO 5 AÑOS</div>
+                  <div class="card-row"><span>Inversión total</span><span>$47.8M</span></div>
+                  <div class="card-row"><span>Valor exit año 5</span><span class="green">$54.9M</span></div>
+                  <div class="card-row"><span>Ganancia total</span><span class="green big">$18.9M</span></div>
+                  <div class="card-row"><span>MOIC</span><span class="green big">1.40x</span></div>
+                  <div class="card-row"><span>IRR</span><span class="green big">7.5%</span></div>
+                  <div class="card-row"><span>Payback (renta)</span><span>20.2 años</span></div>
+                  <div style="margin-top:12px"><a href="https://www.portalinmobiliario.com/MLC-demo-0024" target="_blank" class="btn-link">Ver propiedad ↗</a></div>
+                </div>
+              </div>
+            </div>
+            <div class="deal-card">
+              <div class="deal-header">
+                <div>
+                  <span class="deal-label">D-02</span>
+                  <span class="deal-title">Departamento · La Florida</span>
+                  <span class="deal-sub">55 m² · 2 dorm · 1 baños</span>
+                </div>
+                <div class="score-circle" style="border-color:#00e676">
+                  <div class="score-num" style="color:#00e676">94</div>
+                  <div class="score-label">SCORE</div>
+                </div>
+              </div>
+              <div class="card-grid">
+                <div class="card-block">
+                  <div class="block-title">PRECIO</div>
+                  <div class="card-row"><span>Precio entrada</span><span class="white big">$61.6M <small>(UF 1,600)</small></span></div>
+                  <div class="card-row"><span>CLP/m²</span><span>$1,120,000</span></div>
+                  <div class="card-row"><span>Mediana corredor</span><span>$1,393,966/m²</span></div>
+                  <div class="card-row"><span>Descuento vs mediana</span><span class="green big">+19.7%</span></div>
+                  <div class="card-row"><span>Valor a precio mercado</span><span class="green">$76.7M</span></div>
+                  <div class="card-row"><span>Upside D0</span><span class="green big">+24.5%</span></div>
+                  <div class="card-row"><span>Reducción precio</span><span class="green">-16.0% ($11.7M ahorrado)</span></div>
+                </div>
+                <div class="card-block">
+                  <div class="block-title">TIMING</div>
+                  <div class="card-row"><span>Días en mercado</span><span class="yellow big">105 días</span></div>
+                  <div class="block-title" style="margin-top:16px">RENTA</div>
+                  <div class="card-row"><span>Arriendo neto/mes</span><span>$0.3M</span></div>
+                  <div class="card-row"><span>NOI anual</span><span>$3.2M</span></div>
+                  <div class="card-row"><span>Yield bruto</span><span>5.35%</span></div>
+                  <div class="card-row"><span>Cap rate neto</span><span class="green">5.13%</span></div>
+                </div>
+                <div class="card-block">
+                  <div class="block-title">RETORNO 5 AÑOS</div>
+                  <div class="card-row"><span>Inversión total</span><span>$63.8M</span></div>
+                  <div class="card-row"><span>Valor exit año 5</span><span class="green">$73.2M</span></div>
+                  <div class="card-row"><span>Ganancia total</span><span class="green big">$25.2M</span></div>
+                  <div class="card-row"><span>MOIC</span><span class="green big">1.40x</span></div>
+                  <div class="card-row"><span>IRR</span><span class="green big">7.5%</span></div>
+                  <div class="card-row"><span>Payback (renta)</span><span>20.2 años</span></div>
+                  <div style="margin-top:12px"><a href="https://www.portalinmobiliario.com/MLC-demo-0035" target="_blank" class="btn-link">Ver propiedad ↗</a></div>
+                </div>
+              </div>
+            </div>
+            <div class="deal-card">
+              <div class="deal-header">
+                <div>
+                  <span class="deal-label">D-03</span>
+                  <span class="deal-title">Departamento · Las Condes</span>
+                  <span class="deal-sub">55 m² · 2 dorm · 1 baños</span>
+                </div>
+                <div class="score-circle" style="border-color:#00e676">
+                  <div class="score-num" style="color:#00e676">92</div>
+                  <div class="score-label">SCORE</div>
+                </div>
+              </div>
+              <div class="card-grid">
+                <div class="card-block">
+                  <div class="block-title">PRECIO</div>
+                  <div class="card-row"><span>Precio entrada</span><span class="white big">$114.7M <small>(UF 2,980)</small></span></div>
+                  <div class="card-row"><span>CLP/m²</span><span>$2,086,000</span></div>
+                  <div class="card-row"><span>Mediana corredor</span><span>$2,830,208/m²</span></div>
+                  <div class="card-row"><span>Descuento vs mediana</span><span class="green big">+26.3%</span></div>
+                  <div class="card-row"><span>Valor a precio mercado</span><span class="green">$155.7M</span></div>
+                  <div class="card-row"><span>Upside D0</span><span class="green big">+35.7%</span></div>
+                  <div class="card-row"><span>Reducción precio</span><span class="green">-12.0% ($15.6M ahorrado)</span></div>
+                </div>
+                <div class="card-block">
+                  <div class="block-title">TIMING</div>
+                  <div class="card-row"><span>Días en mercado</span><span class="yellow big">95 días</span></div>
+                  <div class="block-title" style="margin-top:16px">RENTA</div>
+                  <div class="card-row"><span>Arriendo neto/mes</span><span>$0.5M</span></div>
+                  <div class="card-row"><span>NOI anual</span><span>$5.9M</span></div>
+                  <div class="card-row"><span>Yield bruto</span><span>5.35%</span></div>
+                  <div class="card-row"><span>Cap rate neto</span><span class="green">5.13%</span></div>
+                </div>
+                <div class="card-block">
+                  <div class="block-title">RETORNO 5 AÑOS</div>
+                  <div class="card-row"><span>Inversión total</span><span>$118.7M</span></div>
+                  <div class="card-row"><span>Valor exit año 5</span><span class="green">$136.3M</span></div>
+                  <div class="card-row"><span>Ganancia total</span><span class="green big">$47.0M</span></div>
+                  <div class="card-row"><span>MOIC</span><span class="green big">1.40x</span></div>
+                  <div class="card-row"><span>IRR</span><span class="green big">7.5%</span></div>
+                  <div class="card-row"><span>Payback (renta)</span><span>20.2 años</span></div>
+                  <div style="margin-top:12px"><a href="https://www.portalinmobiliario.com/MLC-demo-0005" target="_blank" class="btn-link">Ver propiedad ↗</a></div>
+                </div>
+              </div>
+            </div>
+            <div class="deal-card">
+              <div class="deal-header">
+                <div>
+                  <span class="deal-label">D-04</span>
+                  <span class="deal-title">Departamento · Providencia</span>
+                  <span class="deal-sub">40 m² · 1 dorm · 1 baños</span>
+                </div>
+                <div class="score-circle" style="border-color:#00e676">
+                  <div class="score-num" style="color:#00e676">92</div>
+                  <div class="score-label">SCORE</div>
+                </div>
+              </div>
+              <div class="card-grid">
+                <div class="card-block">
+                  <div class="block-title">PRECIO</div>
+                  <div class="card-row"><span>Precio entrada</span><span class="white big">$84.7M <small>(UF 2,200)</small></span></div>
+                  <div class="card-row"><span>CLP/m²</span><span>$2,117,500</span></div>
+                  <div class="card-row"><span>Mediana corredor</span><span>$2,502,500/m²</span></div>
+                  <div class="card-row"><span>Descuento vs mediana</span><span class="green big">+15.4%</span></div>
+                  <div class="card-row"><span>Valor a precio mercado</span><span class="green">$100.1M</span></div>
+                  <div class="card-row"><span>Upside D0</span><span class="green big">+18.2%</span></div>
+                  <div class="card-row"><span>Reducción precio</span><span class="green">-15.0% ($14.9M ahorrado)</span></div>
+                </div>
+                <div class="card-block">
+                  <div class="block-title">TIMING</div>
+                  <div class="card-row"><span>Días en mercado</span><span class="yellow big">100 días</span></div>
+                  <div class="block-title" style="margin-top:16px">RENTA</div>
+                  <div class="card-row"><span>Arriendo neto/mes</span><span>$0.4M</span></div>
+                  <div class="card-row"><span>NOI anual</span><span>$4.3M</span></div>
+                  <div class="card-row"><span>Yield bruto</span><span>5.35%</span></div>
+                  <div class="card-row"><span>Cap rate neto</span><span class="green">5.13%</span></div>
+                </div>
+                <div class="card-block">
+                  <div class="block-title">RETORNO 5 AÑOS</div>
+                  <div class="card-row"><span>Inversión total</span><span>$87.7M</span></div>
+                  <div class="card-row"><span>Valor exit año 5</span><span class="green">$100.6M</span></div>
+                  <div class="card-row"><span>Ganancia total</span><span class="green big">$34.7M</span></div>
+                  <div class="card-row"><span>MOIC</span><span class="green big">1.40x</span></div>
+                  <div class="card-row"><span>IRR</span><span class="green big">7.5%</span></div>
+                  <div class="card-row"><span>Payback (renta)</span><span>20.2 años</span></div>
+                  <div style="margin-top:12px"><a href="https://www.portalinmobiliario.com/MLC-demo-0016" target="_blank" class="btn-link">Ver propiedad ↗</a></div>
+                </div>
+              </div>
+            </div>
+            <div class="deal-card">
+              <div class="deal-header">
+                <div>
+                  <span class="deal-label">D-05</span>
+                  <span class="deal-title">Departamento · Lo Barnechea</span>
+                  <span class="deal-sub">72 m² · 3 dorm · 2 baños</span>
+                </div>
+                <div class="score-circle" style="border-color:#00e676">
+                  <div class="score-num" style="color:#00e676">92</div>
+                  <div class="score-label">SCORE</div>
+                </div>
+              </div>
+              <div class="card-grid">
+                <div class="card-block">
+                  <div class="block-title">PRECIO</div>
+                  <div class="card-row"><span>Precio entrada</span><span class="white big">$123.2M <small>(UF 3,200)</small></span></div>
+                  <div class="card-row"><span>CLP/m²</span><span>$1,711,111</span></div>
+                  <div class="card-row"><span>Mediana corredor</span><span>$2,317,404/m²</span></div>
+                  <div class="card-row"><span>Descuento vs mediana</span><span class="green big">+26.2%</span></div>
+                  <div class="card-row"><span>Valor a precio mercado</span><span class="green">$166.9M</span></div>
+                  <div class="card-row"><span>Upside D0</span><span class="green big">+35.4%</span></div>
+                  <div class="card-row"><span>Reducción precio</span><span class="green">-14.0% ($20.1M ahorrado)</span></div>
+                </div>
+                <div class="card-block">
+                  <div class="block-title">TIMING</div>
+                  <div class="card-row"><span>Días en mercado</span><span class="yellow big">95 días</span></div>
+                  <div class="block-title" style="margin-top:16px">RENTA</div>
+                  <div class="card-row"><span>Arriendo neto/mes</span><span>$0.5M</span></div>
+                  <div class="card-row"><span>NOI anual</span><span>$6.3M</span></div>
+                  <div class="card-row"><span>Yield bruto</span><span>5.35%</span></div>
+                  <div class="card-row"><span>Cap rate neto</span><span class="green">5.13%</span></div>
+                </div>
+                <div class="card-block">
+                  <div class="block-title">RETORNO 5 AÑOS</div>
+                  <div class="card-row"><span>Inversión total</span><span>$127.5M</span></div>
+                  <div class="card-row"><span>Valor exit año 5</span><span class="green">$146.3M</span></div>
+                  <div class="card-row"><span>Ganancia total</span><span class="green big">$50.4M</span></div>
+                  <div class="card-row"><span>MOIC</span><span class="green big">1.40x</span></div>
+                  <div class="card-row"><span>IRR</span><span class="green big">7.5%</span></div>
+                  <div class="card-row"><span>Payback (renta)</span><span>20.2 años</span></div>
+                  <div style="margin-top:12px"><a href="https://www.portalinmobiliario.com/MLC-demo-0030" target="_blank" class="btn-link">Ver propiedad ↗</a></div>
+                </div>
+              </div>
+            </div>
+</div>
+
+<!-- SENSITIVITY -->
+<div class="section">
+  <div class="section-title">5. Análisis de Sensibilidad — IRR × Descuento × Apreciación UF (D-01)</div>
+  <div class="table-wrap">
+    <table class="sens-table">
+      <thead><tr><th>Desc. entrada ↓ / Aprec. UF →</th><th>1.0%</th><th>2.5%</th><th>3.5%</th><th>5.0%</th><th>6.5%</th></tr></thead>
+      <tbody><tr><td><strong>-5%</strong> ($43.9M)</td><td style="background:#b71c1c;color:#fff;font-weight:600">5.2%</td><td style="background:#b71c1c;color:#fff;font-weight:600">6.6%</td><td style="background:#b71c1c;color:#fff;font-weight:600">7.5%</td><td style="background:#f57f17;color:#fff;font-weight:600">8.9%</td><td style="background:#f57f17;color:#fff;font-weight:600">10.2%</td></tr><tr><td><strong>-10%</strong> ($41.6M)</td><td style="background:#b71c1c;color:#fff;font-weight:600">5.2%</td><td style="background:#b71c1c;color:#fff;font-weight:600">6.6%</td><td style="background:#b71c1c;color:#fff;font-weight:600">7.5%</td><td style="background:#f57f17;color:#fff;font-weight:600">8.9%</td><td style="background:#f57f17;color:#fff;font-weight:600">10.2%</td></tr><tr><td><strong>-15%</strong> ($39.3M)</td><td style="background:#b71c1c;color:#fff;font-weight:600">5.2%</td><td style="background:#b71c1c;color:#fff;font-weight:600">6.6%</td><td style="background:#b71c1c;color:#fff;font-weight:600">7.5%</td><td style="background:#f57f17;color:#fff;font-weight:600">8.9%</td><td style="background:#f57f17;color:#fff;font-weight:600">10.2%</td></tr><tr><td><strong>-20%</strong> ($37.0M)</td><td style="background:#b71c1c;color:#fff;font-weight:600">5.2%</td><td style="background:#b71c1c;color:#fff;font-weight:600">6.6%</td><td style="background:#b71c1c;color:#fff;font-weight:600">7.5%</td><td style="background:#f57f17;color:#fff;font-weight:600">8.9%</td><td style="background:#f57f17;color:#fff;font-weight:600">10.2%</td></tr><tr><td><strong>-25%</strong> ($34.6M)</td><td style="background:#b71c1c;color:#fff;font-weight:600">5.2%</td><td style="background:#b71c1c;color:#fff;font-weight:600">6.6%</td><td style="background:#b71c1c;color:#fff;font-weight:600">7.5%</td><td style="background:#f57f17;color:#fff;font-weight:600">8.9%</td><td style="background:#f57f17;color:#fff;font-weight:600">10.2%</td></tr><tr><td><strong>-30%</strong> ($32.3M)</td><td style="background:#b71c1c;color:#fff;font-weight:600">5.2%</td><td style="background:#b71c1c;color:#fff;font-weight:600">6.6%</td><td style="background:#b71c1c;color:#fff;font-weight:600">7.5%</td><td style="background:#f57f17;color:#fff;font-weight:600">8.9%</td><td style="background:#f57f17;color:#fff;font-weight:600">10.2%</td></tr><tr><td><strong>-35%</strong> ($30.0M)</td><td style="background:#b71c1c;color:#fff;font-weight:600">5.2%</td><td style="background:#b71c1c;color:#fff;font-weight:600">6.6%</td><td style="background:#b71c1c;color:#fff;font-weight:600">7.5%</td><td style="background:#f57f17;color:#fff;font-weight:600">8.9%</td><td style="background:#f57f17;color:#fff;font-weight:600">10.2%</td></tr></tbody>
+    </table>
+  </div>
+  <div style="margin-top:8px;font-size:11px;color:var(--dim)">
+    <span style="background:#00695c;color:#fff;padding:2px 8px;border-radius:3px;margin-right:6px">≥16%</span>Excepcional &nbsp;
+    <span style="background:#2e7d32;color:#fff;padding:2px 8px;border-radius:3px;margin-right:6px">≥12%</span>Target &nbsp;
+    <span style="background:#f57f17;color:#fff;padding:2px 8px;border-radius:3px;margin-right:6px">≥8%</span>Aceptable &nbsp;
+    <span style="background:#b71c1c;color:#fff;padding:2px 8px;border-radius:3px;margin-right:6px">&lt;8%</span>Sub-óptimo
+  </div>
+</div>
+
+<!-- PORTFOLIO CONSTRUCTION -->
+<div class="section">
+  <div class="section-title">6. Construcción de Portafolio — CLP 5,000 M</div>
+  <div class="portf-bar"><div class="portf-name"><span>Línea 1 — Central (Providencia · Santiago · Ñuñoa)</span><span style="color:var(--cyan)">35% · $1,750M · ~17 activos</span></div><div class="bar-outer"><div class="bar-inner" style="width:35%;background:linear-gradient(90deg,#00bcd4,#006064)">35%</div></div></div>
+  <div class="portf-bar"><div class="portf-name"><span>Línea 7 — Premium (Las Condes · Vitacura · Lo Barnechea)</span><span style="color:var(--green)">30% · $1,500M · ~6 activos</span></div><div class="bar-outer"><div class="bar-inner" style="width:30%;background:linear-gradient(90deg,#00e676,#1b5e20)">30%</div></div></div>
+  <div class="portf-bar"><div class="portf-name"><span>Línea 8 — Sur (La Florida · Puente Alto · Peñalolén)</span><span style="color:var(--yellow)">25% · $1,250M · ~13 activos</span></div><div class="bar-outer"><div class="bar-inner" style="width:25%;background:linear-gradient(90deg,#ffd740,#e65100)">25%</div></div></div>
+  <div class="portf-bar"><div class="portf-name"><span>Expansión (La Reina · Maipú · San Miguel)</span><span style="color:var(--dim)">10% · $500M · ~5 activos</span></div><div class="bar-outer"><div class="bar-inner" style="width:10%;background:linear-gradient(90deg,#78909c,#37474f)">10%</div></div></div>
+  <br>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Métrica portafolio</th><th>Bear</th><th class="num">Base</th><th class="num">Bull</th></tr></thead>
+    <tbody>
+      <tr><td>IRR anual</td><td style="color:#ff5252">4.3%</td><td class="num" style="color:#e0e0e0">7.5%</td><td class="num" style="color:#00e676">10.1%</td></tr>
+      <tr><td>MOIC</td><td style="color:#ff5252">1.22x</td><td class="num" style="color:#e0e0e0">1.40x</td><td class="num" style="color:#00e676">1.55x</td></tr>
+      <tr><td>Valor portafolio año 5</td><td style="color:#ff5252">$6081M</td><td class="num" style="color:#e0e0e0">$6977M</td><td class="num" style="color:#00e676">$7769M</td></tr>
+      <tr><td>Cap rate neto</td><td style="color:#ff5252">4.15%</td><td class="num" style="color:#e0e0e0">5.13%</td><td class="num" style="color:#00e676">6.02%</td></tr>
+      <tr><td>Distribución anual LP</td><td style="color:#ff5252">$207.7M</td><td class="num" style="color:#e0e0e0">$256.6M</td><td class="num" style="color:#00e676">$301.2M</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<!-- FUND TERMS -->
+<div class="section">
+  <div class="section-title">7. Estructura del Fondo y Términos</div>
+  <div class="terms-grid">
+    <div class="term-row"><span class="term-key">Vehículo</span><span class="term-val">SpA o Fondo Privado CMF</span><span class="term-note">Estructura según asesoría legal</span></div><div class="term-row"><span class="term-key">Tamaño objetivo</span><span class="term-val">CLP 5,000 M  ·  UF 129,870</span><span class="term-note">Serie A</span></div><div class="term-row"><span class="term-key">Inversión mínima LP</span><span class="term-val">CLP 200 M  (UF 5,200)</span><span class="term-note">Inversionistas acreditados Art. 4bis LMV</span></div><div class="term-row"><span class="term-key">Management fee</span><span class="term-val">1.5% anual sobre NAV</span><span class="term-note">Cobrado trimestral</span></div><div class="term-row"><span class="term-key">Carried interest</span><span class="term-val">20% sobre retornos > hurdle</span><span class="term-note">GP sobre ganancia excedente</span></div><div class="term-row"><span class="term-key">Hurdle rate</span><span class="term-val">8% anual en UF</span><span class="term-note">LPs reciben primero hasta 8% IRR</span></div><div class="term-row"><span class="term-key">Catch-up GP</span><span class="term-val">50% hasta igualar 20/80</span><span class="term-note">Waterfall estándar PE</span></div><div class="term-row"><span class="term-key">Waterfall</span><span class="term-val">1. Capital · 2. Hurdle · 3. Catch-up · 4. 80/20</span><span class="term-note">Distribución secuencial</span></div><div class="term-row"><span class="term-key">Horizonte fondo</span><span class="term-val">5 años (+ 2 extensión)</span><span class="term-note">Aprobación junta LPs</span></div><div class="term-row"><span class="term-key">Período inversión</span><span class="term-val">Años 1-2</span><span class="term-note">Deal flow activo via scoring agent</span></div><div class="term-row"><span class="term-key">Período cosecha</span><span class="term-val">Años 3-5</span><span class="term-note">Exit selectivo — trigger apreciación ≥40%</span></div><div class="term-row"><span class="term-key">Distribución renta</span><span class="term-val">Semestral</span><span class="term-note">NOI neto tras reservas</span></div><div class="term-row"><span class="term-key">Liquidez LP</span><span class="term-val">Sin ventana</span><span class="term-note">Mercado secundario privado — comité GP</span></div><div class="term-row"><span class="term-key">Auditoría</span><span class="term-val">Anual · Big 4</span><span class="term-note">Estados financieros IFRS</span></div><div class="term-row"><span class="term-key">Valorización</span><span class="term-val">Semestral · tasador externo</span><span class="term-note">Tasador inscrito MINVU</span></div><div class="term-row"><span class="term-key">Moneda</span><span class="term-val">CLP / UF</span><span class="term-note">Arriendos en UF · NAV en CLP</span></div>
+  </div>
+</div>
+
+<!-- RISK MATRIX -->
+<div class="section">
+  <div class="section-title">8. Matriz de Riesgos</div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Riesgo</th><th>Probabilidad</th><th>Impacto</th><th>Δ IRR</th><th>Mitigación</th></tr></thead>
+    <tbody><tr>
+      <td><strong>Caída precios RM > 15%</strong></td>
+      <td><span class="risk-badge" style="background:#ffd74022;color:#ffd740;border:1px solid #ffd74055">Medio</span></td><td><span class="risk-badge" style="background:#ff525222;color:#ff5252;border:1px solid #ff525255">Alto</span></td>
+      <td style="color:#ff7043;font-weight:600">-3 a -5pp</td>
+      <td class="dim">Entrada 20-30% bajo mediana — buffer estructural desde D0</td>
+    </tr><tr>
+      <td><strong>Subida tasas hipotecarias</strong></td>
+      <td><span class="risk-badge" style="background:#69f0ae22;color:#69f0ae;border:1px solid #69f0ae55">Bajo</span></td><td><span class="risk-badge" style="background:#ffd74022;color:#ffd740;border:1px solid #ffd74055">Medio</span></td>
+      <td style="color:#ff7043;font-weight:600">-1 a -2pp</td>
+      <td class="dim">Adquisición 100% equity — sin servicio de deuda</td>
+    </tr><tr>
+      <td><strong>Vacancia > 8% sostenida</strong></td>
+      <td><span class="risk-badge" style="background:#69f0ae22;color:#69f0ae;border:1px solid #69f0ae55">Bajo</span></td><td><span class="risk-badge" style="background:#ffd74022;color:#ffd740;border:1px solid #ffd74055">Medio</span></td>
+      <td style="color:#ff7043;font-weight:600">-1.5pp</td>
+      <td class="dim">Comunas con alta demanda de arriendo · precio bajo atrae inquilino</td>
+    </tr><tr>
+      <td><strong>Corrección ciclo inmobiliario</strong></td>
+      <td><span class="risk-badge" style="background:#ffd74022;color:#ffd740;border:1px solid #ffd74055">Medio</span></td><td><span class="risk-badge" style="background:#ff525222;color:#ff5252;border:1px solid #ff525255">Alto</span></td>
+      <td style="color:#ff7043;font-weight:600">-2 a -4pp</td>
+      <td class="dim">Hold 5 años absorbe ciclos cortos · exit oportunista si aprecia antes</td>
+    </tr><tr>
+      <td><strong>Cambio normativa tributaria</strong></td>
+      <td><span class="risk-badge" style="background:#69f0ae22;color:#69f0ae;border:1px solid #69f0ae55">Bajo</span></td><td><span class="risk-badge" style="background:#ff525222;color:#ff5252;border:1px solid #ff525255">Alto</span></td>
+      <td style="color:#ff7043;font-weight:600">Variable</td>
+      <td class="dim">Estructurar en SpA desde inicio · asesoría Big 4</td>
+    </tr><tr>
+      <td><strong>Iliquidez de salida</strong></td>
+      <td><span class="risk-badge" style="background:#ffd74022;color:#ffd740;border:1px solid #ffd74055">Medio</span></td><td><span class="risk-badge" style="background:#ffd74022;color:#ffd740;border:1px solid #ffd74055">Medio</span></td>
+      <td style="color:#ff7043;font-weight:600">Extensión</td>
+      <td class="dim">Precio bajo mediana → rotación rápida · broker con mandato 60d</td>
+    </tr><tr>
+      <td><strong>Deterioro físico activo</strong></td>
+      <td><span class="risk-badge" style="background:#69f0ae22;color:#69f0ae;border:1px solid #69f0ae55">Bajo</span></td><td><span class="risk-badge" style="background:#69f0ae22;color:#69f0ae;border:1px solid #69f0ae55">Bajo</span></td>
+      <td style="color:#ff7043;font-weight:600">-0.5pp</td>
+      <td class="dim">Reserva mantención 0.5% anual · inspección técnica pre-compra</td>
+    </tr><tr>
+      <td><strong>Riesgo data / scoring</strong></td>
+      <td><span class="risk-badge" style="background:#69f0ae22;color:#69f0ae;border:1px solid #69f0ae55">Bajo</span></td><td><span class="risk-badge" style="background:#69f0ae22;color:#69f0ae;border:1px solid #69f0ae55">Bajo</span></td>
+      <td style="color:#ff7043;font-weight:600">Operacional</td>
+      <td class="dim">Multi-fuente Portal+Yapo+TocToc · alerta si falla > 6h</td>
+    </tr><tr>
+      <td><strong>Concentración corredor único</strong></td>
+      <td><span class="risk-badge" style="background:#69f0ae22;color:#69f0ae;border:1px solid #69f0ae55">Bajo</span></td><td><span class="risk-badge" style="background:#ffd74022;color:#ffd740;border:1px solid #ffd74055">Medio</span></td>
+      <td style="color:#ff7043;font-weight:600">-1pp</td>
+      <td class="dim">Política: máx 35% por corredor · revisión semestral</td>
+    </tr><tr>
+      <td><strong>Riesgo key-person gestor</strong></td>
+      <td><span class="risk-badge" style="background:#69f0ae22;color:#69f0ae;border:1px solid #69f0ae55">Bajo</span></td><td><span class="risk-badge" style="background:#ff525222;color:#ff5252;border:1px solid #ff525255">Alto</span></td>
+      <td style="color:#ff7043;font-weight:600">Operacional</td>
+      <td class="dim">Equipo mínimo 3 · scoring agent automatizado reduce dependencia</td>
+    </tr></tbody>
+  </table></div>
+</div>
+
+<!-- DD CHECKLIST -->
+<div class="section">
+  <div class="section-title">9. Proceso de Due Diligence</div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Fase</th><th>Criterio</th><th>Umbral</th><th>Acción si no cumple</th></tr></thead>
+    <tbody>
+    <tr><td><strong style="color:var(--cyan)">FILTRO</strong></td><td>Score modelo compuesto</td><td style="color:var(--green);font-weight:600">≥ 75 / 100</td><td class="dim">Descartar del pipeline</td></tr><tr><td></td><td>Descuento vs mediana corredor</td><td style="color:var(--green);font-weight:600">≥ 15%</td><td class="dim">Watchlist si 10-15%</td></tr><tr><td></td><td>Días en mercado</td><td style="color:var(--green);font-weight:600">≥ 30 días</td><td class="dim">Flexibilizar si reducción > 10%</td></tr><tr><td></td><td>Precio unitario máximo</td><td style="color:var(--green);font-weight:600">≤ UF 10,000</td><td class="dim">Excluir — liquidez limitada</td></tr><tr><td></td><td>IRR estimado base</td><td style="color:var(--green);font-weight:600">≥ 12% anual</td><td class="dim">No proceder a DD legal</td></tr><tr><td></td><td>Cap rate neto</td><td style="color:var(--green);font-weight:600">≥ 4.5%</td><td class="dim">Evaluar si upside D0 > 30%</td></tr><tr><td><strong style="color:var(--cyan)">DD LEGAL</strong></td><td>Dominio inscrito libre cargas</td><td style="color:var(--green);font-weight:600">100% limpio CBR</td><td class="dim">Rechazar o negociar alzamiento</td></tr><tr><td></td><td>Hipotecas / gravámenes</td><td style="color:var(--green);font-weight:600">0 cargas activas</td><td class="dim">Descuento por alzamiento</td></tr><tr><td></td><td>Litigios activos</td><td style="color:var(--green);font-weight:600">Certificado tribunal limpio</td><td class="dim">Rechazar</td></tr><tr><td></td><td>Permisos y recepción final</td><td style="color:var(--green);font-weight:600">DOM vigente</td><td class="dim">Negociar regularización</td></tr><tr><td><strong style="color:var(--cyan)">DD TÉCNICA</strong></td><td>Inspección física</td><td style="color:var(--green);font-weight:600">Informe tasador MINVU</td><td class="dim">Descuento si reparaciones > 5%</td></tr><tr><td></td><td>Superficies vs escritura</td><td style="color:var(--green);font-weight:600">± 5%</td><td class="dim">Renegociar proporcional</td></tr><tr><td></td><td>Estado conservación</td><td style="color:var(--green);font-weight:600">B o superior</td><td class="dim">Presupuestar Capex si C</td></tr><tr><td></td><td>Gastos comunes</td><td style="color:var(--green);font-weight:600">< 2 UF/mes</td><td class="dim">Impacta yield neto</td></tr><tr><td><strong style="color:var(--cyan)">DD COMERCIAL</strong></td><td>Comparables arriendo zona</td><td style="color:var(--green);font-weight:600">Yield ≥ 0.40%/mes</td><td class="dim">Revisar supuesto</td></tr><tr><td></td><td>Vacancia zona</td><td style="color:var(--green);font-weight:600">< 6%</td><td class="dim">Aumentar supuesto vacancia</td></tr><tr><td><strong style="color:var(--cyan)">APROBACIÓN</strong></td><td>Votación comité inversión</td><td style="color:var(--green);font-weight:600">≥ 2/3 miembros</td><td class="dim">No invertir</td></tr><tr><td></td><td>Carta de intención</td><td style="color:var(--green);font-weight:600">< 48h post-aprobación</td><td class="dim">Prioridad competitiva</td></tr><tr><td></td><td>Depósito garantía</td><td style="color:var(--green);font-weight:600">0.5% precio acordado</td><td class="dim">Asegurar opción de compra</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <div>Datos: Portal Inmobiliario · UF = $38,500 CLP · Generado: 13/05/2026 19:12</div>
+  <div>Este documento es confidencial. Se basa en datos públicos de mercado. No constituye asesoría financiera regulada bajo la Ley 18.045 (LMV).</div>
+  <div style="margin-top:8px;color:#2a3a50">Real Estate Intelligence Agent v1.0 · REI Fund I Serie A</div>
+</div>
+
+</div>
+</body>
+</html>
