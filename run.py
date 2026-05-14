@@ -17,8 +17,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import statistics
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Optional
@@ -62,6 +66,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--corredor", action="store_true", help="Generate branded Market Intelligence Report PDF for real estate agents")
     p.add_argument("--zona", type=str, default="", metavar="COMUNAS", help='Comma-separated communes to filter, e.g. "Lampa,Quilicura"')
     p.add_argument("--subscription-preview", action="store_true", dest="subscription_preview", help="Preview weekly subscriber report format")
+    p.add_argument("--telegram", action="store_true", help="Send Deal Memo-style digest to Telegram group (requires TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID env vars)")
     return p.parse_args()
 
 
@@ -3265,11 +3270,282 @@ def _print_subscription_preview(scored: list[dict], listings_total: int) -> None
 
 
 # ---------------------------------------------------------------------------
+# Telegram digest — --telegram
+# ---------------------------------------------------------------------------
+
+# Deal Memo benchmarks: UF/m² post-subdivision by commune (from research Mayo 2026)
+_ROL_BENCHMARK: dict[str, float] = {
+    "Batuco": 0.50,
+    "Lampa":  0.35,
+    "Til-Til": 0.25,
+    "Colina":  0.30,
+    "Quilicura": 0.35,
+    "Maipú":  0.32,
+    "Pudahuel": 0.32,
+    "Buin":    0.22,
+    "Paine":   0.20,
+    "Quillón": 0.14,
+    "San Nicolás": 0.13,
+    "San Ignacio": 0.12,
+    "Coihueco": 0.13,
+    "Pinto":   0.17,
+}
+_LVR_ZONE: dict[str, float] = {
+    "Batuco": 0.60, "Lampa": 0.55, "Til-Til": 0.55,
+    "Colina": 0.55, "Quilicura": 0.55, "Maipú": 0.55, "Pudahuel": 0.55,
+}  # default 0.45 for Ñuble / other zones
+
+
+def _tg_terreno_financials(listing: dict) -> dict | None:
+    """Estimate subdivision financials (Deal Memo style) for a terreno listing."""
+    precio = listing.get("precio_uf") or 0
+    m2 = listing.get("superficie_m2") or listing.get("m2") or 0
+    if not precio or not m2 or m2 < 2000:
+        return None
+    comuna = listing.get("comuna", "")
+    precio_rol = _ROL_BENCHMARK.get(comuna, 0.20)
+    lvr = _LVR_ZONE.get(comuna, 0.45)
+    lotes = max(1, int(m2 / 5000))
+    tasacion = round(lotes * 5000 * precio_rol, 0)
+    hipoteca = round(tasacion * lvr, 0)
+    moic_c1 = round(hipoteca / precio, 2) if precio > 0 else 0
+    moic_5y = round(moic_c1 * 2.2, 1)
+    return {
+        "lotes": lotes,
+        "tasacion": tasacion,
+        "hipoteca": hipoteca,
+        "lvr_pct": int(lvr * 100),
+        "moic_c1": moic_c1,
+        "moic_5y": moic_5y,
+    }
+
+
+def _tg_accion(prop: dict, fin: dict | None) -> str:
+    score = prop.get("score", 0) or 0
+    urg = prop.get("urgency_score", 0) or 0
+    flp = prop.get("flip_score", 0) or 0
+    lot = prop.get("potencial_loteo_score", 0) or 0
+    if score >= 80:
+        return "EJECUTAR" if lot >= 65 or fin else "EJECUTAR"
+    elif score >= 65:
+        return "NEGOCIAR"
+    elif urg >= 60:
+        return "URGENTE — LLAMAR HOY"
+    elif flp >= 65:
+        return "FLIP — INVESTIGAR"
+    return "WATCHLIST"
+
+
+def _format_telegram_digest(scored: list[dict], listings_total: int, zona: str = "") -> list[str]:
+    """Format top properties as Telegram HTML messages (Deal Memo card style).
+    Returns list of message strings (split if > 4000 chars each).
+    """
+    _UF = 40_100
+    valid = [s for s in scored if s.get("score") is not None]
+    top = sorted(valid, key=lambda x: x["score"], reverse=True)[:5]
+    now = datetime.now().strftime("%d %b %Y · %H:%M")
+    zona_label = f" · Zona: {zona}" if zona else ""
+
+    urgentes = sum(1 for s in valid if (s.get("urgency_score") or 0) >= 60)
+    flips    = sum(1 for s in valid if (s.get("flip_score") or 0) >= 65)
+    loteos   = sum(1 for s in valid if (s.get("potencial_loteo_score") or 0) >= 65)
+    scores   = [s["score"] for s in valid]
+    avg_sc   = round(sum(scores) / len(scores), 0) if scores else 0
+    max_sc   = max(scores) if scores else 0
+
+    # ── Header ──
+    header = (
+        "🏗 <b>BASTIAS INVERSIONES</b>\n"
+        f"📊 <b>Digest Land Banking Chile</b>{zona_label}\n"
+        f"📅 {now}  ·  UF ${_UF:,}\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🔥 <b>TOP {len(top)} OPORTUNIDADES</b>\n"
+        f"<i>De {listings_total:,} propiedades analizadas</i>\n\n"
+    )
+
+    # ── Property cards ──
+    cards = []
+    tipo_icon = {"departamento": "🏢", "casa": "🏠", "terreno": "🌿"}
+
+    for i, prop in enumerate(top, 1):
+        score = prop.get("score", 0) or 0
+        score_emoji = "🟢" if score >= 80 else "🟡" if score >= 65 else "⚪"
+
+        flags = []
+        if (prop.get("urgency_score") or 0) >= 60: flags.append("🚨URGENTE")
+        if (prop.get("flip_score") or 0) >= 65:    flags.append("🔄FLIP")
+        if (prop.get("potencial_loteo_score") or 0) >= 65: flags.append("🏗LOTEO")
+        flag_str = "  " + " ".join(flags) if flags else ""
+
+        tipo = prop.get("tipo_propiedad") or prop.get("tipo") or ""
+        ticon = tipo_icon.get(tipo, "📍")
+        titulo = (prop.get("titulo") or prop.get("direccion") or "Sin título")[:45]
+        comuna = prop.get("comuna", "")
+        corredor = prop.get("corredor", "")
+        loc = f"{comuna}" + (f" · {corredor}" if corredor else "")
+
+        precio_uf = prop.get("precio_uf") or 0
+        m2 = prop.get("superficie_m2") or prop.get("m2") or 0
+        pm2 = prop.get("precio_m2_uf") or (precio_uf / m2 if m2 and precio_uf else 0)
+        dias = prop.get("days_on_market") or prop.get("dias_en_mercado") or 0
+        vs_med = prop.get("vs_mediana_pct") or 0
+
+        precio_usd = int(precio_uf * _UF / 891) if precio_uf else 0
+        ha = m2 / 10_000 if m2 else 0
+
+        fin = _tg_terreno_financials(prop) if tipo == "terreno" else None
+        accion = _tg_accion(prop, fin)
+
+        card = f"{score_emoji} <b>#{i} Score {score:.0f}/100</b>{flag_str}\n"
+        card += f"{ticon} <b>{titulo}</b>\n"
+        if loc:
+            card += f"📍 {loc}\n"
+        if precio_uf:
+            card += f"💰 UF {precio_uf:,.0f}"
+            if precio_usd:
+                card += f" (~USD {precio_usd:,})"
+            card += "\n"
+        if m2:
+            card += f"📐 {ha:.1f} ha ({m2:,.0f} m²)"
+            if pm2:
+                card += f"  ·  UF {pm2:.3f}/m²"
+            card += "\n"
+        if dias:
+            card += f"⏱ {dias} días"
+        if vs_med:
+            vs_str = f"{vs_med:+.0f}% vs mediana"
+            card += ("  ·  " if dias else "") + vs_str + "\n"
+        elif dias:
+            card += "\n"
+
+        # Financials for terrenos (Deal Memo style)
+        if fin:
+            card += (
+                f"🏗 {fin['lotes']} lotes DL 3.516 → Tasación UF {fin['tasacion']:,.0f}\n"
+                f"🏦 Hipoteca {fin['lvr_pct']}% LVR: <b>UF {fin['hipoteca']:,.0f} liberados</b>\n"
+                f"📈 MOIC: <b>{fin['moic_c1']}x ciclo 1</b>  |  {fin['moic_5y']}x en 5 años\n"
+            )
+        elif vs_med and vs_med < -10:
+            card += f"📈 {abs(vs_med):.0f}% bajo mediana → oportunidad de flip\n"
+
+        url = prop.get("url") or prop.get("link") or ""
+        if url and "/MLC-" in url:
+            card += f'🔗 <a href="{url}">Ver en Portal →</a>\n'
+
+        card += f"✅ <b>{accion}</b>\n"
+        cards.append(card)
+
+    # ── Footer ──
+    footer = (
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📊 <b>Resumen de mercado</b>\n"
+        f"• {listings_total:,} propiedades analizadas\n"
+        f"• Score promedio: {avg_sc:.0f}/100  ·  Máximo: {max_sc:.0f}/100\n"
+    )
+    if urgentes: footer += f"• 🚨 {urgentes} urgentes\n"
+    if flips:    footer += f"• 🔄 {flips} con señal flip\n"
+    if loteos:   footer += f"• 🏗 {loteos} con potencial loteo\n"
+    footer += "\n<i>Bastias Inversiones · Land Banking Chile · Generado automáticamente</i>"
+
+    # Assemble and split at 4000 chars if needed
+    full = header + "\n".join(cards) + "\n" + footer
+    if len(full) <= 4000:
+        return [full]
+
+    # Split: send header+cards as one block, footer as second
+    msgs = [header]
+    for card in cards:
+        if len(msgs[-1]) + len(card) + 2 < 3900:
+            msgs[-1] += "\n" + card
+        else:
+            msgs.append(card)
+    msgs.append(footer)
+    return msgs
+
+
+def _send_telegram(token: str, chat_id: str, text: str) -> bool:
+    """Send an HTML-formatted message via Telegram Bot API."""
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = json.dumps({
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read().decode())
+            return bool(result.get("ok"))
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        print(f"[Telegram] HTTP {e.code}: {body}", file=sys.stderr)
+        return False
+    except Exception as e:
+        print(f"[Telegram] Error: {e}", file=sys.stderr)
+        return False
+
+
+def _print_telegram(scored: list[dict], listings_total: int, zona: str = "") -> None:
+    from rich.console import Console
+    from rich.panel import Panel
+    console = Console()
+
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+
+    if not token or not chat_id:
+        console.print(Panel(
+            "[bold red]Faltan variables de entorno:[/bold red]\n\n"
+            "  [yellow]export TELEGRAM_BOT_TOKEN='123456789:ABCdef...'[/yellow]\n"
+            "  [yellow]export TELEGRAM_CHAT_ID='-1001234567890'[/yellow]\n\n"
+            "[dim]Cómo obtenerlas:\n"
+            "1. Crea un bot con @BotFather en Telegram → obtienes BOT_TOKEN\n"
+            "2. Agrega el bot a tu grupo como administrador\n"
+            "3. Envía un mensaje al grupo, luego consulta:\n"
+            "   https://api.telegram.org/bot<TOKEN>/getUpdates\n"
+            "   → el chat_id del grupo aparece en 'chat.id'[/dim]",
+            title="[bold red]⚠ Configuración requerida[/bold red]",
+            border_style="red",
+        ))
+        return
+
+    console.print(f"\n[cyan]Preparando digest para Telegram...[/cyan]")
+    messages = _format_telegram_digest(scored, listings_total, zona)
+    console.print(f"[dim]  {len(messages)} mensaje(s) · {sum(len(m) for m in messages):,} caracteres total[/dim]")
+
+    ok_count = 0
+    for i, msg in enumerate(messages, 1):
+        console.print(f"[dim]  Enviando mensaje {i}/{len(messages)}...[/dim]")
+        if _send_telegram(token, chat_id, msg):
+            ok_count += 1
+        else:
+            console.print(f"[red]  ✗ Error en mensaje {i}[/red]")
+
+    if ok_count == len(messages):
+        console.print(f"[bold green]✓ Digest enviado exitosamente ({ok_count}/{len(messages)} mensajes)[/bold green]")
+        console.print(f"[dim]  Top 5 propiedades · {listings_total:,} analizadas[/dim]")
+    else:
+        console.print(f"[yellow]⚠ {ok_count}/{len(messages)} mensajes enviados[/yellow]")
+
+    # Print preview to console too
+    console.print()
+    console.rule("[dim]── Preview del mensaje enviado ──[/dim]")
+    preview = messages[0][:800] + ("…" if len(messages[0]) > 800 else "")
+    console.print(f"[dim]{preview}[/dim]")
+
+
+# ---------------------------------------------------------------------------
 # Main command: --top20
 # ---------------------------------------------------------------------------
 
 
-async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: bool = False, report: bool = False, invest: bool = False, html_out: bool = False, dashboard: bool = False, corredor: bool = False, zona: str = "", subscription_preview: bool = False) -> None:
+async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: bool = False, report: bool = False, invest: bool = False, html_out: bool = False, dashboard: bool = False, corredor: bool = False, zona: str = "", subscription_preview: bool = False, telegram: bool = False) -> None:
     from rich.console import Console
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
@@ -3369,6 +3645,8 @@ async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: b
         _print_corredor(scored, listings_total=len(unique), zona=zona)
     elif subscription_preview:
         _print_subscription_preview(scored, listings_total=len(unique))
+    elif telegram:
+        _print_telegram(scored, listings_total=len(unique), zona=zona)
     else:
         _print_top20(scored)
 
@@ -3381,7 +3659,7 @@ async def cmd_top20(tipos: list[str], max_pages: int, output_json: bool, demo: b
 def main() -> None:
     args = _parse_args()
 
-    if not args.top20 and not args.report and not args.invest and not args.html and not args.dashboard and not args.corredor and not args.subscription_preview:
+    if not args.top20 and not args.report and not args.invest and not args.html and not args.dashboard and not args.corredor and not args.subscription_preview and not args.telegram:
         print(__doc__)
         sys.exit(0)
 
@@ -3397,6 +3675,7 @@ def main() -> None:
         corredor=args.corredor,
         zona=args.zona,
         subscription_preview=args.subscription_preview,
+        telegram=args.telegram,
     ))
 
 
