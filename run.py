@@ -405,6 +405,12 @@ def _print_top20(scored: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _commune_slug(commune: str) -> str:
+    """Convert commune display name to Portal Inmobiliario URL slug."""
+    trans = str.maketrans("ÁÉÍÓÚáéíóúÑñÜü", "AEIOUaeiouNnUu")
+    return commune.translate(trans).lower().replace(" ", "-")
+
+
 def _demo_listings() -> list[dict]:
     """
     ~120 synthetic listings representative of the RM market (May 2026).
@@ -518,7 +524,7 @@ def _demo_listings() -> list[dict]:
             "precio_m2":        round(precio_clp / m2, 0),
             "dormitorios":      dorm if dorm > 0 else None,
             "banos":            banos if banos > 0 else None,
-            "url":              f"https://www.portalinmobiliario.com/MLC-demo-{i:04d}",
+            "url":              f"https://www.portalinmobiliario.com/venta/{tipo}/{_commune_slug(comuna)}-metropolitana",
             "fecha_publicacion": pub_date,
             "scraped_at":       datetime.now(timezone.utc).isoformat(),
         }
@@ -2524,7 +2530,7 @@ function renderCard(d){{
   ${{flags?`<div class="flags">${{flags}}</div>`:''}}
   <div class="card-footer">
     <div class="card-dias">${{d.dias}} días publicado</div>
-    <a class="card-link" href="${{d.url}}" target="_blank">Ver en Portal →</a>
+    <a class="card-link" href="${{d.url}}" target="_blank">${{d.id.startsWith('demo-')?'Buscar similares →':'Ver en Portal →'}}</a>
   </div>
 </div>`;
 }}
