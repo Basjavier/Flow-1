@@ -499,6 +499,143 @@ def _demo_listings() -> list[dict]:
     ]
 
     from datetime import timedelta
+    _BASE = "https://www.portalinmobiliario.com/"
+    # Pool de URLs MLC reales por (tipo, comuna) — asignadas en rotación.
+    # Extraídas de búsquedas en Portal Inmobiliario, mayo 2026.
+    _POOL: dict[tuple[str, str], list[str]] = {
+        ("departamento", "Las Condes"): [
+            _BASE+"MLC-1623084587-departamento-venta-2-dormitorios-manquehue-sur-las-condes-_JM",
+            _BASE+"MLC-3180451284-departamento-en-venta-de-2-dorm-en-las-condes-_JM",
+            _BASE+"MLC-2926533268-venta-departamento-en-las-condes-2-dormitorios-_JM",
+            _BASE+"MLC-2942205500-departamento-venta-4-dormitorios-vista-despejada-las-condes-_JM",
+            _BASE+"MLC-3182401390-departamento-en-venta-en-las-condes-_JM",
+            _BASE+"MLC-1696364243-departamento-en-venta-en-las-condes-_JM",
+        ],
+        ("departamento", "Vitacura"): [
+            _BASE+"MLC-974213650-espectacular-depto-remodelado-en-la-portada-de-vitacura-151m-_JM",
+            _BASE+"MLC-1382379925-vitacura-sector-alto-las-condes-_JM",
+            _BASE+"MLC-2974153188-amplio-luminoso-y-elegante-departamento-en-vitacura-_JM",
+            _BASE+"MLC-2857558048-amplio-departamento-en-vitacura-a-pasos-del-mall-_JM",
+        ],
+        ("departamento", "Providencia"): [
+            _BASE+"MLC-3535905844-departamento-en-venta-en-providencia-_JM",
+            _BASE+"MLC-1598649629-departamento-en-venta-de-2-dorm-en-providencia-_JM",
+            _BASE+"MLC-1002698085-departamento-venta-providencia-metro-manuel-montt-_JM",
+            _BASE+"MLC-2890962336-departamento-2d2b-en-venta-en-providencia-alta-plusvalia-_JM",
+            _BASE+"MLC-1606105623-departamento-en-venta-de-4-dorm-en-providencia-_JM",
+            _BASE+"MLC-3927279300-ocasion-en-venta-gran-depto-en-mejor-sector-providencia-_JM",
+        ],
+        ("departamento", "Ñuñoa"): [
+            _BASE+"MLC-2453340000-venta-de-departamento-irrarazaval-2931-nunoa-_JM",
+            _BASE+"MLC-2978992476-departamento-en-venta-de-3-dormitorios-con-2-estac-en-nunoa-_JM",
+            _BASE+"MLC-545538371-departamento-en-venta-de-2-dormitorios-en-nunoa-_JM",
+            _BASE+"MLC-969956530-departamento-en-venta-de-2-dorm-en-nunoa-_JM",
+            _BASE+"MLC-2376736712-departamento-venta-2-dorm-nunoa-a-7-minutos-metro-bilbao-_JM",
+        ],
+        ("departamento", "Santiago"): [
+            _BASE+"MLC-1651834633-departamento-en-venta-en-el-centro-de-santiago-_JM",
+            _BASE+"MLC-2898635296-departamento-en-venta-con-3h-santiago-centro-_JM",
+            _BASE+"MLC-2604085594-en-venta-departamento-loft-santiago-centro-bellas-artes-_JM",
+            _BASE+"MLC-1625125699-venta-de-comodo-departamento-en-santiago-centro-_JM",
+            _BASE+"MLC-1845087731-departamento-en-venta-en-santo-domingo-santiago-_JM",
+        ],
+        ("departamento", "Lo Barnechea"): [
+            _BASE+"MLC-960495010-departamento-en-venta-de-3-dorm-en-lo-barnechea-_JM",
+            _BASE+"MLC-2443078224-departamento-en-venta-federico-lathrop-lo-barnechea-_JM",
+            _BASE+"MLC-2886830436-departamento-en-venta-de-4-dorm-en-lo-barnechea-_JM",
+            _BASE+"MLC-554822477-departamento-en-venta-de-2-dorm-en-lo-barnechea-_JM",
+        ],
+        ("departamento", "La Florida"): [
+            _BASE+"MLC-1350606189-departamento-en-venta-de-3-dorm-en-la-florida-_JM",
+            _BASE+"MLC-2849582296-departamento-en-venta-en-la-florida-_JM",
+            _BASE+"MLC-2808239948-departamento-en-venta-la-florida-metro-los-quillayes-259-_JM",
+            _BASE+"MLC-1572989657-departamento-en-venta-de-1-dorm-en-la-florida-_JM",
+            _BASE+"MLC-1599110207-departamento-en-venta-la-florida-_JM",
+        ],
+        ("departamento", "Peñalolén"): [
+            _BASE+"MLC-941580795-precioso-departamento-con-vista-cordillera-penalolen-_JM",
+            _BASE+"MLC-1787753453-departamento-en-venta-en-ictinos-penalolen-_JM",
+            _BASE+"MLC-550425440-departamento-en-venta-de-2-dorm-en-penalolen-_JM",
+        ],
+        ("departamento", "Puente Alto"): [
+            _BASE+"MLC-1565589071-departamento-en-venta-de-3-dorm-en-puente-alto-_JM",
+            _BASE+"MLC-3044080760-venta-departamento-2hab-1ba-puente-alto-_JM",
+            _BASE+"MLC-1602210821-departamento-en-venta-de-2-dorm-en-puente-alto-_JM",
+            _BASE+"MLC-546665320-departamento-en-venta-de-2-dorm-en-puente-alto-_JM",
+        ],
+        ("departamento", "La Reina"): [
+            _BASE+"MLC-1096324203-departamento-en-ventala-canada-la-reina-_JM",
+            _BASE+"MLC-2923177844-venta-departamento-reina-isidora-uf-4000-71357-_JM",
+            _BASE+"MLC-2820475838-departamento-en-venta-de-3d-3b-amplias-terrazas-en-la-reina-_JM",
+        ],
+        ("departamento", "Maipú"): [
+            _BASE+"MLC-1606657767-departamento-en-venta-de-2-dorm-en-maipu-_JM",
+            _BASE+"MLC-560018651-departamento-en-venta-de-3-dorm-en-maipu-_JM",
+            _BASE+"MLC-2884153628-departamento-en-venta-maipu-con-lautaro-venta-uf-2590-_JM",
+        ],
+        ("departamento", "San Miguel"): [
+            _BASE+"MLC-1615159169-departamento-en-venta-en-san-miguel-_JM",
+            _BASE+"MLC-1572629495-departamento-en-venta-san-miguel-_JM",
+            _BASE+"MLC-603325857-departamento-en-venta-de-3-dorm-en-san-miguel-_JM",
+        ],
+        ("casa", "Las Condes"): [
+            _BASE+"MLC-967348543-casa-en-venta-las-condes-vende-dueno-_JM",
+            _BASE+"MLC-1825162633-casa-en-venta-en-las-condes-_JM",
+            _BASE+"MLC-2841097700-casa-en-venta-de-3-dorm-en-las-condes-_JM",
+        ],
+        ("casa", "Vitacura"): [
+            _BASE+"MLC-598763760-casa-en-venta-de-4-dormitorios-en-vitacura-_JM",
+            _BASE+"MLC-1382379925-vitacura-sector-alto-las-condes-_JM",
+        ],
+        ("casa", "Ñuñoa"): [
+            _BASE+"MLC-551863438-casa-en-venta-de-4-dorm-en-nunoa-_JM",
+            _BASE+"MLC-958732025-venta-de-casa-nunoa-_JM",
+        ],
+        ("casa", "La Florida"): [
+            _BASE+"MLC-567412853-casa-en-venta-de-3-dorm-en-la-florida-_JM",
+            _BASE+"MLC-1601796309-casa-venta-la-florida-el-hualle-sur-_JM",
+            _BASE+"MLC-1033805062-casa-en-venta-de-5-dorm-en-la-florida-_JM",
+        ],
+        ("casa", "Peñalolén"): [
+            _BASE+"MLC-1574879969-casa-alto-penalolen-_JM",
+        ],
+        ("casa", "Puente Alto"): [
+            _BASE+"MLC-1618640367-casa-en-venta-de-6-dorm-en-puente-alto-_JM",
+            _BASE+"MLC-2784795960-venta-de-casa-en-puente-alto-villa-valle-del-sol-_JM",
+        ],
+        ("terreno", "Lo Barnechea"): [
+            _BASE+"MLC-1609507267-terreno-en-venta-860-mt2-lo-barnechea-potencial-inmobiliario-_JM",
+            _BASE+"MLC-2756261460-terreno-en-venta-calle-los-patos-lo-barnechea-_JM",
+        ],
+        ("terreno", "Las Condes"): [
+            _BASE+"MLC-564707166-av-las-condes-11454-11498-vitacura-las-condes-_JM",
+        ],
+        ("terreno", "Vitacura"): [
+            _BASE+"MLC-1478332139-sitio-en-venta-en-vitacura-camino-del-condor-_JM",
+        ],
+        ("terreno", "Colina"): [
+            _BASE+"MLC-1569867597-gran-parcela-en-colina-5000m-por-3950-uf-_JM",
+            _BASE+"MLC-1483208591-parcela-en-colina-precio-desde-4000-uf-_JM",
+        ],
+        ("terreno", "Lampa"): [
+            _BASE+"MLC-3060988162-terreno-2459-hectareas-fundo-chicauma-lamparm-_JM",
+            _BASE+"MLC-2808028908-terreno-lampa-subdividido-12-has-con-luz-agua-21-parcelas-_JM",
+        ],
+        ("terreno", "Quilicura"): [
+            _BASE+"MLC-2871457100-terreno-centro-antiguo-de-quilicura-cerca-de-mall-y-plaza-_JM",
+        ],
+        ("terreno", "Buin"): [
+            _BASE+"MLC-1572477125-parcelas-en-venta-buin-5000-m2-desde-uf-6000-urbanizada-_JM",
+        ],
+        ("terreno", "Paine"): [
+            _BASE+"MLC-1011011775-parcelacasa-colonial-terreno-urbano-agricola-paine-_JM",
+        ],
+        ("terreno", "Batuco"): [
+            _BASE+"MLC-2976017136-terreno-residencialcomercial-plaza-batuco-_JM",
+        ],
+    }
+    _pool_idx: dict[tuple[str, str], int] = {}
+
     zon_map = {
         "Quilicura": "ZH-Habitacional", "Colina": "ZH-Habitacional",
         "Buin": "Ag-Parcela", "Paine": "Ag-Parcela",
@@ -511,6 +648,14 @@ def _demo_listings() -> list[dict]:
         precio_clp = int(precio_uf * _UF)
         precio_inicial = int(precio_clp / (1 - red_pct)) if red_pct > 0 else None
         pub_date = (datetime.now(timezone.utc) - timedelta(days=dias)).isoformat()
+        # Asignar URL MLC real del pool; fallback a búsqueda si no hay pool
+        key = (tipo, comuna)
+        pool = _POOL.get(key, [])
+        if pool:
+            url = pool[_pool_idx.get(key, 0) % len(pool)]
+            _pool_idx[key] = _pool_idx.get(key, 0) + 1
+        else:
+            url = f"https://www.portalinmobiliario.com/venta/{tipo}/{_commune_slug(comuna)}-metropolitana"
         item_dict = {
             "external_id":      f"demo-{i:04d}",
             "source":           "portal_inmobiliario",
@@ -524,7 +669,7 @@ def _demo_listings() -> list[dict]:
             "precio_m2":        round(precio_clp / m2, 0),
             "dormitorios":      dorm if dorm > 0 else None,
             "banos":            banos if banos > 0 else None,
-            "url":              f"https://www.portalinmobiliario.com/venta/{tipo}/{_commune_slug(comuna)}-metropolitana",
+            "url":              url,
             "fecha_publicacion": pub_date,
             "scraped_at":       datetime.now(timezone.utc).isoformat(),
         }
@@ -2608,7 +2753,7 @@ function renderCard(d){{
   ${{flags?`<div class="flags">${{flags}}</div>`:''}}
   <div class="card-footer">
     <div class="card-dias">${{d.dias}} días publicado</div>
-    <a class="card-link" href="${{d.url}}" target="_blank">${{d.id.startsWith('demo-')?'Buscar similares →':'Ver en Portal →'}}</a>
+    <a class="card-link" href="${{d.url}}" target="_blank">${{d.url.includes('/MLC-')?'Ver en Portal →':'Buscar similares →'}}</a>
   </div>
 </div>`;
 }}
