@@ -531,48 +531,64 @@ def _demo_listings() -> list[dict]:
         item_dict["zonificacion"] = zon_map.get(comuna, "") if tipo == "terreno" else ""
         listings.append(item_dict)
 
-    # ── Real listings: URLs MLC reales extraídas de Portal Inmobiliario ──────
-    # Precios exactos donde fueron confirmados en el aviso; estimados (~) en otros.
+    # ── Real listings: URLs MLC completas extraídas de Portal Inmobiliario ───
+    # URL completa con slug (formato MercadoLibre): MLC-{id}-{slug}-_JM
+    # Precios confirmados ✓ desde el aviso; estimados (~) en otros.
     # external_id "mlc-..." → dashboard muestra "Ver en Portal →" directo al aviso.
     _REAL = [
-        # (tipo, comuna, m2, precio_uf, dorm, banos, dias, red_pct, mlc_id, sector, zon)
+        # (tipo, comuna, m2, precio_uf, dorm, banos, dias, red_pct, url_completa, sector, zon)
         # ── Departamentos ─────────────────────────────────────────────────────
         ("departamento", "Las Condes",  65, 5_200, 2, 2,  45, 0.00,
-         "1623084587", "Manquehue Sur, Las Condes", ""),
+         "https://www.portalinmobiliario.com/MLC-1623084587-departamento-venta-2-dormitorios-manquehue-sur-las-condes-_JM",
+         "Manquehue Sur, Las Condes", ""),
         ("departamento", "Las Condes",  70, 5_800, 2, 2,  30, 0.00,
-         "3180451284", "Las Condes", ""),
+         "https://www.portalinmobiliario.com/MLC-3180451284-departamento-en-venta-de-2-dorm-en-las-condes-_JM",
+         "Las Condes", ""),
         ("departamento", "Providencia", 94, 7_500, 3, 3,  20, 0.00,
-         "3535905844", "Av. Holanda, Providencia", ""),        # triplex confirmado 94m²
+         "https://www.portalinmobiliario.com/MLC-3535905844-departamento-en-venta-en-providencia-_JM",
+         "Av. Holanda, Providencia", ""),                     # triplex confirmado 94m²
         ("departamento", "Providencia", 55, 3_800, 2, 2,  35, 0.03,
-         "1598649629", "Plaza Las Lilas, Providencia", ""),
+         "https://www.portalinmobiliario.com/MLC-1598649629-departamento-en-venta-de-2-dorm-en-providencia-_JM",
+         "Plaza Las Lilas, Providencia", ""),
         ("departamento", "Providencia", 80, 5_200, 3, 2,  25, 0.00,
-         "1002698085", "Metro Manuel Montt, Providencia", ""),
+         "https://www.portalinmobiliario.com/MLC-1002698085-departamento-venta-providencia-metro-manuel-montt-_JM",
+         "Metro Manuel Montt, Providencia", ""),
         ("departamento", "Providencia", 60, 4_200, 2, 2,  40, 0.00,
-         "2890962336", "Providencia, Alta Plusvalía", ""),
+         "https://www.portalinmobiliario.com/MLC-2890962336-departamento-2d2b-en-venta-en-providencia-alta-plusvalia-_JM",
+         "Providencia, Alta Plusvalía", ""),
         ("departamento", "Ñuñoa",       55, 3_100, 2, 2,  55, 0.05,
-         "2453340000", "Irrazábal 2931, Ñuñoa", ""),
+         "https://www.portalinmobiliario.com/MLC-2453340000-venta-de-departamento-irrarazaval-2931-nunoa-_JM",
+         "Irrazábal 2931, Ñuñoa", ""),
         # ── Casas ─────────────────────────────────────────────────────────────
         ("casa", "Ñuñoa",    80,  2_169, 4, 2,  90, 0.00,
-         "551863438",  "Metro Estadio Nacional, Ñuñoa", ""),   # $87M CLP confirmado
+         "https://www.portalinmobiliario.com/MLC-551863438-casa-en-venta-de-4-dorm-en-nunoa-_JM",
+         "Metro Estadio Nacional, Ñuñoa", ""),                # $87M CLP ✓
         ("casa", "Vitacura", 200, 13_000, 4, 3,  60, 0.00,
-         "598763760",  "Vitacura", ""),                         # UF 13.000 confirmado
+         "https://www.portalinmobiliario.com/MLC-598763760-casa-en-venta-de-4-dormitorios-en-vitacura-_JM",
+         "Vitacura", ""),                                      # UF 13.000 ✓
         # ── Terrenos ──────────────────────────────────────────────────────────
         ("terreno", "Colina", 5_000,  3_950, 0, 0, 120, 0.00,
-         "1569867597", "Colina / Batuco", "ZH-Habitacional"),   # UF 3.950 confirmado
+         "https://www.portalinmobiliario.com/MLC-1569867597-gran-parcela-en-colina-5000m-por-3950-uf-_JM",
+         "Colina / Batuco", "ZH-Habitacional"),                # UF 3.950 ✓
         ("terreno", "Colina", 5_000,  4_000, 0, 0, 150, 0.08,
-         "1483208591", "Colina", "ZH-Habitacional"),            # desde UF 4.000 confirmado
+         "https://www.portalinmobiliario.com/MLC-1483208591-parcela-en-colina-precio-desde-4000-uf-_JM",
+         "Colina", "ZH-Habitacional"),                         # desde UF 4.000 ✓
         ("terreno", "Buin",   5_000,  6_000, 0, 0, 180, 0.00,
-         "1572477125", "Acceso Sur / P. Hurtado, Buin", "Ag-Parcela"),  # UF 6.000 confirmado
+         "https://www.portalinmobiliario.com/MLC-1572477125-parcelas-en-venta-buin-5000-m2-desde-uf-6000-urbanizada-_JM",
+         "Acceso Sur / P. Hurtado, Buin", "Ag-Parcela"),      # UF 6.000 ✓
         ("terreno", "Lampa", 24_590,  4_000, 0, 0, 200, 0.15,
-         "3060988162", "Fundo Chicauma, Lampa", "ZH-Expansion"),
+         "https://www.portalinmobiliario.com/MLC-3060988162-terreno-2459-hectareas-fundo-chicauma-lamparm-_JM",
+         "Fundo Chicauma, Lampa", "ZH-Expansion"),
         ("terreno", "Lampa", 120_000, 8_000, 0, 0, 120, 0.10,
-         "2808028908", "Lampa 12 há — 21 parcelas luz+agua", "ZH-Expansion"),
+         "https://www.portalinmobiliario.com/MLC-2808028908-terreno-lampa-subdividido-12-has-con-luz-agua-21-parcelas-_JM",
+         "Lampa 12 há — 21 parcelas luz+agua", "ZH-Expansion"),
     ]
 
-    for tipo, comuna, m2, precio_uf, dorm, banos, dias, red_pct, mlc_id, sector, zon in _REAL:
+    for tipo, comuna, m2, precio_uf, dorm, banos, dias, red_pct, url, sector, zon in _REAL:
         precio_clp   = int(precio_uf * _UF)
         precio_inic  = int(precio_clp / (1 - red_pct)) if red_pct > 0 else None
         pub_date     = (datetime.now(timezone.utc) - timedelta(days=dias)).isoformat()
+        mlc_id       = url.split("/MLC-")[1].split("-")[0]
         listings.append({
             "external_id":       f"mlc-{mlc_id}",
             "source":            "portal_inmobiliario",
@@ -586,7 +602,7 @@ def _demo_listings() -> list[dict]:
             "precio_m2":         round(precio_clp / m2, 0),
             "dormitorios":       dorm if dorm > 0 else None,
             "banos":             banos if banos > 0 else None,
-            "url":               f"https://www.portalinmobiliario.com/MLC-{mlc_id}-_JM",
+            "url":               url,
             "fecha_publicacion": pub_date,
             "scraped_at":        datetime.now(timezone.utc).isoformat(),
             "zonificacion":      zon,
