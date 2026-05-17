@@ -191,17 +191,26 @@ class AltDataPipeline:
         await self.run_real_estate_pipeline()
 
     def start(self, run_now: bool = True):
+        try:
+            asyncio.run(self._start_async(run_now))
+        except KeyboardInterrupt:
+            logger.info("Pipeline detenido por usuario")
+
+    async def _start_async(self, run_now: bool = True):
+        # AsyncIOScheduler.start() requiere un event loop corriendo,
+        # por eso se arranca dentro de la corrutina y no antes.
         self._setup_schedule()
         self.scheduler.start()
         logger.info("🟢 Scheduler activo")
 
-        loop = asyncio.get_event_loop()
-
         if run_now:
-            loop.run_until_complete(self.run_all_now())
+            await self.run_all_now()
 
         try:
-            loop.run_forever()
-        except KeyboardInterrupt:
-            logger.info("Pipeline detenido por usuario")
+            while True:
+                await asyncio.sleep(3600)
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            pass
+        finally:
             self.scheduler.shutdown()
+            logger.info("Scheduler detenido")
