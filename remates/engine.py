@@ -161,7 +161,7 @@ BID_LEVEL_META = {
 # Comparable market benchmark (from research, for sanity check)
 MARKET_BENCHMARK_UF_M2 = {
     "La Serena":   {"new": 52.42, "used": 43.2},
-    "Viña del Mar": {"new": 67.0,  "used": 55.5},
+    "Viña del Mar": {"new": 67.0,  "used": 60.0},   # validado: Sendero Norte 55 D.142 vendió a 3,000 UF (60 UF/m²)
     "Santiago":    {"new": 85.0,  "used": 70.0},
 }
 

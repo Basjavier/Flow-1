@@ -17,14 +17,14 @@ TIER_A = [
         parking=1,
         m2=50.0,
         catalog_base_uf=650.0,
-        market_uf_per_m2_raw=33.31,
+        market_uf_per_m2_raw=60.0,
         n_comparables=4,
         auction_date=date(2026, 4, 29),
         score=85,
         notes=(
-            "⚠ Solo 4 comparables — alta incertidumbre en UF/m². "
-            "Verificar sector exacto de Sendero Norte (plan vs cerro). "
-            "Remate en 8 días — due diligence urgente."
+            "✅ VENTA VALIDADA: salió a 3,000 UF (60 UF/m²). "
+            "Comparable original 33.31 UF/m² estaba 80% por debajo — era necesidad de venta, no mercado real. "
+            "Usar como calibración para Viña del Mar sector plan."
         ),
     ),
     Asset(
