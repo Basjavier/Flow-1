@@ -3,6 +3,54 @@ from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
+from config.settings import DEMO_MODE
+
+
+# Hechos esenciales demo — categorías variadas para ejercitar el NLP.
+DEMO_HECHOS = [
+    {
+        "empresa": "Falabella S.A.", "rut_emisor": "90.749.000-9",
+        "tipo_documento": "Hecho Esencial",
+        "descripcion": ("Acuerdo de adquisición del 100% de cadena regional "
+                        "de retail por USD 420 millones, sujeto a aprobación."),
+        "ticker": "FALABELLA",
+    },
+    {
+        "empresa": "SQM S.A.", "rut_emisor": "93.007.000-9",
+        "tipo_documento": "Hecho Esencial",
+        "descripcion": ("Colocación de bonos corporativos por USD 800 millones "
+                        "para refinanciamiento de deuda y capex."),
+        "ticker": "SQM",
+    },
+    {
+        "empresa": "Cencosud S.A.", "rut_emisor": "93.834.000-5",
+        "tipo_documento": "Hecho Esencial",
+        "descripcion": ("Suscripción de pacto de accionistas y cambio de "
+                        "controlador tras ingreso de nuevo socio estratégico."),
+        "ticker": "CENCOSUD",
+    },
+    {
+        "empresa": "Empresas Copec S.A.", "rut_emisor": "90.690.000-9",
+        "tipo_documento": "Hecho Esencial",
+        "descripcion": ("Directorio aprueba reparto de dividendo extraordinario "
+                        "con cargo a utilidades retenidas."),
+        "ticker": "COPEC",
+    },
+    {
+        "empresa": "Enel Chile S.A.", "rut_emisor": "94.271.000-3",
+        "tipo_documento": "Hecho Esencial",
+        "descripcion": ("Notificación de sanción regulatoria de la "
+                        "Superintendencia del Medio Ambiente con multa."),
+        "ticker": "ENELCHILE",
+    },
+    {
+        "empresa": "CMPC S.A.", "rut_emisor": "90.222.000-3",
+        "tipo_documento": "Hecho Esencial",
+        "descripcion": ("Publicación de estados financieros trimestrales: "
+                        "EBITDA en línea con guidance, sin cambios de proyección."),
+        "ticker": "CMPC",
+    },
+]
 
 
 class CMFScraper:
@@ -22,11 +70,32 @@ class CMFScraper:
             }
         )
 
+    def _demo_hechos(self, days_back: int) -> list[dict]:
+        now = datetime.now()
+        out = []
+        for i, h in enumerate(DEMO_HECHOS):
+            fecha = (now - timedelta(hours=4 * (i + 1))).strftime("%Y-%m-%d")
+            out.append({
+                "fecha":          fecha,
+                "empresa":        h["empresa"],
+                "rut_emisor":     h["rut_emisor"],
+                "tipo_documento": h["tipo_documento"],
+                "descripcion":    h["descripcion"],
+                "url_documento":  f"https://www.cmfchile.cl/demo/he/{h['ticker'].lower()}",
+                "source":         "CMF_DEMO",
+                "scraped_at":     now.isoformat(),
+            })
+        return out
+
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=10))
     async def fetch_hechos_esenciales(self, days_back: int = 1) -> list[dict]:
         fecha_desde = (
             datetime.now() - timedelta(days=days_back)
         ).strftime("%Y-%m-%d")
+
+        if DEMO_MODE:
+            logger.info("CMF demo: hechos sintéticos")
+            return self._demo_hechos(days_back)
 
         # Intentar API oficial primero
         try:
@@ -37,8 +106,12 @@ class CMFScraper:
         except Exception as e:
             logger.warning(f"CMF API falló, usando scraping: {e}")
 
-        # Fallback: scraping directo
-        return await self._scrape_portal(fecha_desde)
+        # Fallback: scraping directo, y si tampoco hay red → demo (autosuficiente)
+        hechos = await self._scrape_portal(fecha_desde)
+        if hechos:
+            return hechos
+        logger.warning("CMF sin datos en vivo → fallback demo")
+        return self._demo_hechos(days_back)
 
     async def _fetch_api(self, fecha_desde: str) -> list[dict]:
         """Endpoint oficial CMF (cuando está disponible)."""

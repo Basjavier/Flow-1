@@ -58,26 +58,32 @@ async def run_tests():
     logger.info("=== TEST DE CONECTIVIDAD ===")
     results = {}
 
+    from config.settings import anthropic_live, bcch_live
+
     # Test Anthropic
-    try:
-        from anthropic import Anthropic
-        from config.settings import ANTHROPIC_API_KEY
-        client = Anthropic(api_key=ANTHROPIC_API_KEY)
-        r = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=10,
-            messages=[{"role": "user", "content": "ping"}],
-        )
-        results["anthropic"] = "✅ OK"
-    except Exception as e:
-        results["anthropic"] = f"❌ {e}"
+    if not anthropic_live():
+        results["anthropic"] = "⚠️  demo — sin API key real; NLP usa fallback por reglas"
+    else:
+        try:
+            from anthropic import Anthropic
+            from config.settings import ANTHROPIC_API_KEY
+            client = Anthropic(api_key=ANTHROPIC_API_KEY)
+            client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=10,
+                messages=[{"role": "user", "content": "ping"}],
+            )
+            results["anthropic"] = "✅ OK"
+        except Exception as e:
+            results["anthropic"] = f"❌ {e}"
 
     # Test BCCh
     try:
         from scrapers.bcch_scraper import BCChScraper
         bcch = BCChScraper()
         data = await bcch.get_serie("tpm", first_date="2024-01-01")
-        results["bcch"] = f"✅ OK — {len(data)} registros"
+        tag = "OK" if bcch_live() else "OK (demo)"
+        results["bcch"] = f"✅ {tag} — {len(data)} registros"
     except Exception as e:
         results["bcch"] = f"❌ {e}"
 

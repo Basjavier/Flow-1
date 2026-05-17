@@ -37,6 +37,30 @@ DEMO_MODE         = os.getenv("DEMO_MODE", "false").lower() == "true"
 
 ALERT_WEBHOOK_URL = os.getenv("ALERT_WEBHOOK_URL", "")
 
+# ─── DEMO / LIVE GATES ────────────────────────────────
+# El pipeline es autosuficiente: si falta una credencial real
+# (o DEMO_MODE=true) el componente cae a datos demo en vez de fallar.
+_PLACEHOLDER_ANTHROPIC = {"", "sk-ant-...", "tu_api_key"}
+
+
+def anthropic_live() -> bool:
+    """True solo con API key real de Anthropic y fuera de modo demo."""
+    if DEMO_MODE:
+        return False
+    k = (ANTHROPIC_API_KEY or "").strip()
+    return k not in _PLACEHOLDER_ANTHROPIC and "..." not in k
+
+
+def bcch_live() -> bool:
+    """True solo con credenciales BCCh reales y fuera de modo demo."""
+    if DEMO_MODE:
+        return False
+    u = (BCCH_USER or "").strip()
+    p = (BCCH_PASS or "").strip()
+    if not u or not p:
+        return False
+    return u != "tu_email@gmail.com" and p != "tu_password"
+
 # ─── TICKERS CHILE ────────────────────────────────────
 TICKERS_BBG = {
     "ipsa":        "IPSA Index",

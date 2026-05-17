@@ -3,16 +3,105 @@ from datetime import datetime
 from anthropic import Anthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
 from loguru import logger
-from config.settings import NLP_MODEL_HIGH_VOLUME, NLP_MODEL_MACRO, ANTHROPIC_API_KEY
+from config.settings import (
+    NLP_MODEL_HIGH_VOLUME, NLP_MODEL_MACRO, ANTHROPIC_API_KEY,
+    anthropic_live,
+)
+
+
+# Mapeo simple empresa → ticker BCS para el fallback por reglas.
+_TICKERS = {
+    "falabella": "FALABELLA", "sqm": "SQM", "cencosud": "CENCOSUD",
+    "copec": "COPEC", "enel": "ENELCHILE", "cmpc": "CMPC",
+    "banco de chile": "CHILE", "colbun": "COLBUN", "entel": "ENTEL",
+    "latam": "LTM",
+}
 
 
 class NLPProcessor:
 
     def __init__(self):
-        self.client = Anthropic(api_key=ANTHROPIC_API_KEY)
+        self._live = anthropic_live()
+        # El cliente solo se usa si hay key real; con placeholder no se crea.
+        self.client = Anthropic(api_key=ANTHROPIC_API_KEY) if self._live else None
+        if not self._live:
+            logger.info("NLP en modo demo: fallback por reglas (sin Anthropic)")
+
+    # ─── FALLBACK POR REGLAS ──────────────────────────
+    def _guess_ticker(self, empresa: str | None) -> str | None:
+        e = (empresa or "").lower()
+        for k, v in _TICKERS.items():
+            if k in e:
+                return v
+        return None
+
+    def _rule_signal_cmf(self, hecho: dict) -> dict:
+        text = (
+            f"{hecho.get('tipo_documento','')} {hecho.get('descripcion','')}"
+        ).lower()
+
+        if any(w in text for w in (
+            "adquisic", "fusión", "fusion", "oferta pública", "opa", "m&a",
+        )):
+            sig, conf, cat, hor, urg = "BULLISH", 0.83, "MA", "WEEKS", "HIGH"
+            reason = "Operación M&A con la empresa como target; típicamente re-rating al alza."
+            action = "Evaluar long en el target con stop bajo precio pre-anuncio."
+        elif any(w in text for w in (
+            "bonos", "deuda", "colocación", "colocacion", "refinanciamiento",
+        )):
+            sig, conf, cat, hor, urg = "BEARISH", 0.62, "DEBT_ISSUANCE", "WEEKS", "MEDIUM"
+            reason = "Emisión de deuda relevante; revisar leverage y cobertura de intereses."
+            action = "Monitorear spread de crédito y ratio Deuda/EBITDA."
+        elif any(w in text for w in (
+            "controlador", "pacto de accionistas", "toma de control",
+        )):
+            sig, conf, cat, hor, urg = "WATCHLIST", 0.70, "MANAGEMENT_CHANGE", "DAYS", "MEDIUM"
+            reason = "Cambio de controlador; gobernanza y estrategia en revisión."
+            action = "Watchlist hasta conocer términos del nuevo controlador."
+        elif "dividendo" in text:
+            sig, conf, cat, hor, urg = "BULLISH", 0.60, "DIVIDEND", "DAYS", "LOW"
+            reason = "Dividendo extraordinario; soporte de precio si el yield es atractivo."
+            action = "Estimar yield vs. comparables antes de tomar posición."
+        elif any(w in text for w in (
+            "sanción", "sancion", "multa", "regulator", "fiscaliz", "superintendencia",
+        )):
+            sig, conf, cat, hor, urg = "BEARISH", 0.58, "REGULATORY", "DAYS", "MEDIUM"
+            reason = "Acción regulatoria con potencial impacto financiero y reputacional."
+            action = "Cuantificar multa vs. utilidad anual."
+        elif any(w in text for w in (
+            "resultado", "utilidad", "ebitda", "guidance", "estados financieros",
+        )):
+            sig, conf, cat, hor, urg = "NEUTRAL", 0.50, "EARNINGS_GUIDANCE", "DAYS", "LOW"
+            reason = "Resultados en línea con expectativas; sin sorpresa material."
+            action = None
+        else:
+            sig, conf, cat, hor, urg = "NEUTRAL", 0.40, "OTHER", "DAYS", "LOW"
+            reason = "Hecho sin impacto direccional claro."
+            action = None
+
+        ticker = self._guess_ticker(hecho.get("empresa"))
+        return {
+            "signal":          sig,
+            "confidence":      conf,
+            "category":        cat,
+            "time_horizon":    hor,
+            "affected_ticker": ticker,
+            "affected_sector": None,
+            "reasoning":       reason,
+            "action":          action,
+            "urgency":         urg,
+            "source_type":     "CMF_HE",
+            "source_date":     hecho.get("fecha"),
+            "processed_at":    datetime.now().isoformat(),
+            "hecho_id":        hecho.get("id"),
+            "engine":          "rules",
+        }
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
     async def extract_signal_cmf(self, hecho: dict) -> dict | None:
+        if not self._live:
+            return self._rule_signal_cmf(hecho)
+
         prompt = f"""Eres un analista senior de hedge fund systematic.
 Analiza este hecho esencial CMF y extrae señal de trading.
 
@@ -63,6 +152,20 @@ Reglas:
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
     async def analyze_bcch_release(self, text: str) -> dict | None:
+        if not self._live:
+            return {
+                "tpm_direction":     "HOLD",
+                "tpm_bps_expected":  0,
+                "inflation_bias":    "NEUTRAL",
+                "growth_assessment": "NEUTRAL",
+                "clp_impact":        "NEUTRAL",
+                "rate_curve_impact": "NEUTRAL",
+                "key_phrase":        "(demo) sin comunicado real procesado",
+                "confidence":        0.4,
+                "trades":            [],
+                "engine":            "rules",
+            }
+
         prompt = f"""Eres macro strategist de hedge fund.
 Analiza este comunicado del Banco Central de Chile.
 

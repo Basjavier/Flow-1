@@ -1,8 +1,21 @@
+import random
 import httpx
-from datetime import datetime
+from datetime import datetime, timedelta
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
-from config.settings import BCCH_USER, BCCH_PASS, BCCH_SERIES
+from config.settings import BCCH_USER, BCCH_PASS, BCCH_SERIES, bcch_live
+
+
+# Valores base plausibles para Chile (~2026) usados en modo demo.
+DEMO_BASE = {
+    "tpm":                5.0,
+    "uf":             39200.0,
+    "dolar":            945.0,
+    "inflacion_mensual":  0.4,
+    "imacec":           152.0,
+    "credito_bancario": 1200.0,
+    "balanza_comercial": 1400.0,
+}
 
 
 class BCChScraper:
@@ -12,6 +25,27 @@ class BCChScraper:
     def __init__(self):
         self.client = httpx.AsyncClient(timeout=20.0)
 
+    def _demo_serie(
+        self, serie_key: str, last_date: str | None
+    ) -> list[dict]:
+        """Serie mensual sintética de 24 puntos terminando hoy."""
+        base = DEMO_BASE.get(serie_key, 100.0)
+        end = (
+            datetime.strptime(last_date, "%Y-%m-%d")
+            if last_date else datetime.now()
+        ).replace(day=1)
+        out = []
+        for i in range(23, -1, -1):
+            d = end - timedelta(days=30 * i)
+            drift = (23 - i) * base * 0.001
+            val = round(base * (1 + random.uniform(-0.025, 0.025)) + drift, 4)
+            out.append({
+                "fecha": d.strftime("%Y-%m-%d"),
+                "valor": val,
+                "serie": serie_key,
+            })
+        return out
+
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=8))
     async def get_serie(
         self,
@@ -20,9 +54,9 @@ class BCChScraper:
         last_date: str = None,
     ) -> list[dict]:
 
-        if not BCCH_USER or not BCCH_PASS:
-            logger.warning("BCCh: sin credenciales. Registra en si3.bcentral.cl/siete/")
-            return []
+        if not bcch_live():
+            logger.info(f"BCCh demo: {serie_key}")
+            return self._demo_serie(serie_key, last_date)
 
         if last_date is None:
             last_date = datetime.now().strftime("%Y-%m-%d")
