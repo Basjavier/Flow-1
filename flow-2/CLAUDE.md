@@ -1,0 +1,82 @@
+# CLAUDE.md — flow-2
+
+Memoria del proyecto para sesiones de Claude Code. Leelo completo al empezar.
+
+## Qué es esto
+
+**flow-2** es una herramienta de **Due Diligence inmobiliaria** para Chile.
+A partir de los datos de una propiedad (rol, comuna, propietario, CIP, gravámenes,
+estado en remate, etc.) genera un veredicto **VERDE / AMARILLO / ROJO** con las
+observaciones que lo justifican, y un reporte HTML.
+
+Es un proyecto **separado** del analizador de remates que vive en la raíz del repo
+(`../main.py`, `../remates/`). No los mezcles.
+
+El objetivo de negocio: pasar de una DD manual de 3-7 días a un reporte preliminar
+en ~30 minutos, codificando el criterio experto en reglas editables.
+
+## Estructura
+
+```
+flow-2/
+  backend/app/scoring/engine.py   Motor de scoring (evalúa reglas sobre la propiedad)
+  backend/app/scoring/rules.yml   Reglas declarativas — ACÁ se codifica el criterio
+  backend/tests/                  Tests offline (pytest)
+  standalone-tools/dd_full.py     CLI: JSON de propiedad -> reporte HTML
+  standalone-tools/ejemplos/      3 propiedades de ejemplo (verde / rojo×2)
+  scripts/setup.ps1               Bootstrap en Windows
+  .env.example                    Plantilla de variables de entorno
+```
+
+## Cómo correr
+
+```bash
+# Tests (offline, sin red)
+cd flow-2 && python -m pytest backend/tests -q
+
+# Una DD de ejemplo
+cd flow-2/standalone-tools
+python dd_full.py ejemplos/las_condes_verde.json --abrir
+```
+
+## Modelo de scoring
+
+- `rules.yml` es una lista de reglas. Cada regla mira un campo del JSON de la
+  propiedad (ruta con puntos, ej. `conservador.embargos`), aplica un operador y,
+  si se cumple, agrega una observación con su severidad.
+- Operadores: `is_true`, `is_false`, `equals`, `not_equals`, `exists_nonempty`,
+  `is_empty`, `gt`, `lt`, `gte`, `lte`, `in`, `contains`.
+- Severidades: `rojo` (bloquea) y `amarillo` (precaución).
+- Score final: **ROJO** si hay alguna roja; **AMARILLO** si hay alguna amarilla y
+  ninguna roja; **VERDE** si no se gatilla ninguna.
+- Para ajustar el criterio: editá `rules.yml`. No hace falta tocar `engine.py`
+  salvo que necesites un operador nuevo.
+
+## Esquema del JSON de propiedad
+
+Campos que las reglas actuales esperan (todos opcionales; lo ausente no gatilla):
+`direccion`, `comuna`, `rol`, `propietario.{nombre,rut}`,
+`sii.{avaluo_fiscal_uf,destino}`,
+`cip.{zona,altura_maxima_m,coef_ocupacion_suelo,coef_constructibilidad,uso_permitido}`,
+`registro_civil.propietario_vivo`,
+`conservador.{hipotecas,prohibiciones,embargos,litigios}` (listas),
+`remate.en_remate`, `diario_oficial.publicaciones`.
+Ver `standalone-tools/ejemplos/` para el formato completo.
+
+## Decisiones tomadas (no revertir sin avisar)
+
+- **Reglas declarativas en YAML**, no hardcodeadas en Python. El criterio experto
+  vive en `rules.yml` para que Javier lo edite sin tocar código.
+- **Campo ausente nunca gatilla una observación**. Ausencia de dato ≠ riesgo
+  confirmado. (Excepción intencional: `sin_cip` gatilla amarillo cuando falta la zona.)
+- **Dependencias mínimas**: solo `pyyaml` (runtime) y `pytest` (dev). El reporte HTML
+  se arma con f-strings, sin motor de templates.
+- **Tests 100% offline**. No hay scrapers reales todavía; ver HANDOVER.md.
+
+## Cómo trabaja Javier
+
+- Responder en **español**.
+- Respuestas cortas: **sin bullets ni encabezados decorativos**. Directo.
+- Para tests usar **modo fixture/offline**; modo real solo si lo pide explícito.
+- Mostrar el diff de lo que se cambió cuando se le pida.
+- Si algo es un placeholder, no tratarlo como código de producción.

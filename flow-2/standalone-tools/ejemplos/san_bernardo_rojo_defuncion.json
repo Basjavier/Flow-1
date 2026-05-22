@@ -1,0 +1,37 @@
+{
+  "id": "SB-007",
+  "direccion": "Pasaje El Roble 45, San Bernardo",
+  "comuna": "San Bernardo",
+  "rol": "9012-34",
+  "propietario": {
+    "nombre": "María Soto Fuentes",
+    "rut": "8.765.432-1"
+  },
+  "sii": {
+    "avaluo_fiscal_uf": 1900,
+    "destino": "habitacional"
+  },
+  "cip": {
+    "zona": "ZH-1",
+    "altura_maxima_m": 7,
+    "coef_ocupacion_suelo": 0.5,
+    "coef_constructibilidad": 1.0,
+    "uso_permitido": ["habitacional"]
+  },
+  "registro_civil": {
+    "propietario_vivo": false,
+    "fecha_defuncion": "2025-11-20"
+  },
+  "conservador": {
+    "hipotecas": [],
+    "prohibiciones": [],
+    "embargos": [],
+    "litigios": []
+  },
+  "remate": {
+    "en_remate": false
+  },
+  "diario_oficial": {
+    "publicaciones": []
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "id": "LC-001",
+  "direccion": "Av. Apoquindo 4500, Las Condes",
+  "comuna": "Las Condes",
+  "rol": "1234-56",
+  "propietario": {
+    "nombre": "Inmobiliaria Verde SpA",
+    "rut": "76.123.456-7"
+  },
+  "sii": {
+    "avaluo_fiscal_uf": 8200,
+    "destino": "habitacional"
+  },
+  "cip": {
+    "zona": "ZU-3",
+    "altura_maxima_m": 21,
+    "coef_ocupacion_suelo": 0.4,
+    "coef_constructibilidad": 1.8,
+    "uso_permitido": ["habitacional", "equipamiento"]
+  },
+  "registro_civil": {
+    "propietario_vivo": true
+  },
+  "conservador": {
+    "hipotecas": [],
+    "prohibiciones": [],
+    "embargos": [],
+    "litigios": []
+  },
+  "remate": {
+    "en_remate": false
+  },
+  "diario_oficial": {
+    "publicaciones": []
+  }
+}

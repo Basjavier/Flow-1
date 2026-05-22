@@ -1,0 +1,97 @@
+# Reglas de scoring de Due Diligence inmobiliaria.
+#
+# Cada regla evalúa un campo del JSON de la propiedad. Si la condición se
+# cumple, agrega una observación con su severidad. Editá libremente: este
+# archivo es el lugar donde codificás tu criterio experto.
+#
+# Severidades:
+#   rojo     -> bloquea (no avanzar sin resolución legal)
+#   amarillo -> precaución (avanzar con resguardos)
+#
+# Operadores: is_true, is_false, equals, not_equals, exists_nonempty,
+#   is_empty, gt, lt, gte, lte, in, contains
+#
+# Score final: ROJO si hay alguna roja; AMARILLO si hay alguna amarilla y
+# ninguna roja; VERDE si no se gatilla ninguna.
+
+reglas:
+  - id: remate_activo
+    nombre: Propiedad en remate judicial
+    severidad: rojo
+    campo: remate.en_remate
+    operador: is_true
+    mensaje: >-
+      La propiedad está en remate judicial. Revisar expediente, mínimo de
+      postura y estado de la causa antes de avanzar.
+
+  - id: propietario_fallecido
+    nombre: Propietario fallecido
+    severidad: rojo
+    campo: registro_civil.propietario_vivo
+    operador: is_false
+    mensaje: >-
+      El propietario figura fallecido. Verificar posesión efectiva inscrita;
+      la herencia puede no estar regularizada.
+
+  - id: embargo_vigente
+    nombre: Embargo vigente
+    severidad: rojo
+    campo: conservador.embargos
+    operador: exists_nonempty
+    mensaje: >-
+      Existe al menos un embargo inscrito. No se puede transferir sin
+      alzamiento previo.
+
+  - id: litigio_vigente
+    nombre: Litigio vigente
+    severidad: rojo
+    campo: conservador.litigios
+    operador: exists_nonempty
+    mensaje: Existe un litigio que afecta la propiedad. Requiere revisión legal.
+
+  - id: prohibicion_enajenar
+    nombre: Prohibición de enajenar
+    severidad: rojo
+    campo: conservador.prohibiciones
+    operador: exists_nonempty
+    mensaje: >-
+      Hay una prohibición de enajenar inscrita. Identificar acreedor y
+      condiciones de alzamiento.
+
+  - id: hipoteca_vigente
+    nombre: Hipoteca vigente
+    severidad: amarillo
+    campo: conservador.hipotecas
+    operador: exists_nonempty
+    mensaje: >-
+      Existe una hipoteca inscrita. Coordinar alzamiento simultáneo al pago;
+      no impide la compra pero requiere resguardo.
+
+  - id: uso_no_habitacional
+    nombre: Destino no habitacional
+    severidad: amarillo
+    campo: sii.destino
+    operador: not_equals
+    valor: habitacional
+    mensaje: >-
+      El destino SII no es habitacional. Confirmar que el uso pretendido sea
+      compatible con la zonificación.
+
+  - id: sin_cip
+    nombre: Sin Certificado de Informaciones Previas
+    severidad: amarillo
+    campo: cip.zona
+    operador: is_empty
+    mensaje: >-
+      Falta el CIP o no trae zona. No se puede validar altura, ocupación ni
+      constructibilidad. Solicitar CIP antes de cerrar.
+
+  - id: constructibilidad_baja
+    nombre: Constructibilidad baja
+    severidad: amarillo
+    campo: cip.coef_constructibilidad
+    operador: lt
+    valor: 1.0
+    mensaje: >-
+      El coeficiente de constructibilidad es bajo (<1.0). Revisar si el
+      potencial de desarrollo justifica la inversión.
