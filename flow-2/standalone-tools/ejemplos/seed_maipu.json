@@ -1,0 +1,9 @@
+{
+  "id": "MA-014",
+  "direccion": "Calle Los Aromos 230, Maipú",
+  "comuna": "Maipú",
+  "rol": "5678-90",
+  "propietario": { "nombre": "Juan Pérez González", "rut": "12.345.678-9" },
+  "lat": -33.5167,
+  "lon": -70.7667
+}

@@ -19,6 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from backend.app.enrich import enriquecer_propiedad  # noqa: E402
 from backend.app.scoring.engine import Resultado, evaluar_propiedad  # noqa: E402
 
 COLORES_TERMINAL = {"VERDE": "\033[92m", "AMARILLO": "\033[93m", "ROJO": "\033[91m"}
@@ -44,6 +45,11 @@ def imprimir_terminal(propiedad: dict, resultado: Resultado) -> None:
             print(f"    - [{c}{o.severidad.upper()}{RESET}] {o.mensaje}")
     else:
         print("  Sin observaciones.")
+    fuentes = propiedad.get("_fuentes")
+    if fuentes:
+        print("  Fuentes:")
+        for nombre, estado in fuentes.items():
+            print(f"    - {nombre}: {estado}")
     print()
 
 
@@ -165,7 +171,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Reporte de Due Diligence inmobiliaria"
     )
-    parser.add_argument("propiedad", help="Ruta al JSON de la propiedad")
+    parser.add_argument("propiedad", help="Ruta al JSON de la propiedad (o seed con --enrich)")
+    parser.add_argument(
+        "--enrich",
+        action="store_true",
+        help="Tratar el input como seed y completarlo con los scrapers antes de evaluar",
+    )
     parser.add_argument(
         "--abrir", action="store_true", help="Abrir el reporte HTML en el navegador"
     )
@@ -175,6 +186,8 @@ def main() -> None:
     args = parser.parse_args()
 
     propiedad = cargar_propiedad(args.propiedad)
+    if args.enrich:
+        propiedad = enriquecer_propiedad(propiedad)
     resultado = evaluar_propiedad(propiedad)
     imprimir_terminal(propiedad, resultado)
 

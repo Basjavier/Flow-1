@@ -1,0 +1,26 @@
+# Configuración del scraper WFS de IDE Chile / Geoportal.
+#
+# IMPORTANTE: los nombres de servicio (typename) y de campos de abajo son
+# PLACEHOLDERS. Hay que validarlos contra el GetCapabilities real del servidor
+# WFS antes de usar en producción:
+#
+#   curl "https://<wfs_base_url>?service=WFS&request=GetCapabilities&version=2.0.0"
+#
+# Una vez que sepas el typename y los campos verdaderos, actualizá este archivo
+# y guardá un fixture real en fixtures/ide_chile/<lat>_<lon>.json (GeoJSON).
+
+wfs_base_url: "https://www.ide.cl/geoserver/ows"
+default_srs: "EPSG:4326"
+# Nombre del campo de geometría en la capa (para el filtro espacial CQL).
+geom_field: "geom"
+
+capas:
+  zonificacion:
+    typename: "ide:plan_regulador_zonas"
+    # Mapea campo del WFS -> campo del CIP en el JSON de la propiedad.
+    campos:
+      zona: "zona"
+      altura_maxima_m: "altura_max"
+      coef_ocupacion_suelo: "coef_ocup_suelo"
+      coef_constructibilidad: "coef_constru"
+      uso_permitido: "usos"

@@ -1,0 +1,16 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-70.5681, -33.4096] },
+      "properties": {
+        "zona": "ZU-3",
+        "altura_max": 21,
+        "coef_ocup_suelo": 0.4,
+        "coef_constru": 1.8,
+        "usos": "habitacional, equipamiento"
+      }
+    }
+  ]
+}

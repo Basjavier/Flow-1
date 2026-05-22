@@ -21,9 +21,13 @@ en ~30 minutos, codificando el criterio experto en reglas editables.
 flow-2/
   backend/app/scoring/engine.py   Motor de scoring (evalúa reglas sobre la propiedad)
   backend/app/scoring/rules.yml   Reglas declarativas — ACÁ se codifica el criterio
+  backend/app/scrapers/           Scrapers de las 4 fuentes (modo fixture / real)
+  backend/app/scrapers/fixtures/  Respuestas guardadas por fuente (offline)
+  backend/app/scrapers/config/    layers.yml — capas WFS de IDE Chile (placeholders)
+  backend/app/enrich.py           Seed -> consulta scrapers -> JSON de propiedad
   backend/tests/                  Tests offline (pytest)
   standalone-tools/dd_full.py     CLI: JSON de propiedad -> reporte HTML
-  standalone-tools/ejemplos/      3 propiedades de ejemplo (verde / rojo×2)
+  standalone-tools/ejemplos/      Propiedades completas + seeds para --enrich
   scripts/setup.ps1               Bootstrap en Windows
   .env.example                    Plantilla de variables de entorno
 ```
@@ -34,9 +38,13 @@ flow-2/
 # Tests (offline, sin red)
 cd flow-2 && python -m pytest backend/tests -q
 
-# Una DD de ejemplo
+# Una DD de ejemplo (JSON de propiedad completo)
 cd flow-2/standalone-tools
 python dd_full.py ejemplos/las_condes_verde.json --abrir
+
+# DD desde un seed: completa los datos con los scrapers y después evalúa.
+# En modo fixture (default) usa las respuestas guardadas; offline.
+python dd_full.py ejemplos/seed_las_condes.json --enrich
 ```
 
 ## Modelo de scoring
@@ -69,9 +77,33 @@ Ver `standalone-tools/ejemplos/` para el formato completo.
   vive en `rules.yml` para que Javier lo edite sin tocar código.
 - **Campo ausente nunca gatilla una observación**. Ausencia de dato ≠ riesgo
   confirmado. (Excepción intencional: `sin_cip` gatilla amarillo cuando falta la zona.)
-- **Dependencias mínimas**: solo `pyyaml` (runtime) y `pytest` (dev). El reporte HTML
-  se arma con f-strings, sin motor de templates.
-- **Tests 100% offline**. No hay scrapers reales todavía; ver HANDOVER.md.
+- **Dependencias acotadas**: `pyyaml`, `requests`, `beautifulsoup4` (runtime) y
+  `pytest` (dev). El reporte HTML se arma con f-strings, sin motor de templates.
+  `requests` solo se importa en el modo real de los scrapers.
+- **Tests 100% offline**. Los scrapers corren en modo fixture por default
+  (`SCRAPER_FIXTURE_MODE=1`); ningún test toca la red.
+
+## Scrapers / fuentes (fixture-first)
+
+- 4 fuentes, cada una un scraper en `backend/app/scrapers/` que hereda de
+  `BaseScraper` y opera en dos modos según `SCRAPER_FIXTURE_MODE`:
+  - **fixture** (default): lee `fixtures/<fuente>/<clave>.{json,html}`. Offline.
+  - **real** (`=0`): pega contra producción. Se corre desde una máquina con
+    acceso a las fuentes chilenas.
+- **IDE Chile** (`ide_chile.py`): WFS estándar, automatizable. El modo real arma
+  un GetFeature con filtro `INTERSECTS` por lat/lon y parsea GeoJSON. Los
+  typenames/campos en `config/layers.yml` son **placeholders**: validarlos contra
+  el GetCapabilities real antes de producción.
+- **Diario Oficial** (`diario_oficial.py`): respuesta HTML (no JSON), parser con
+  BeautifulSoup. El selector está escrito contra la estructura esperada del
+  buscador; **validar contra HTML real** y ajustar `BUSCADOR_URL`/selectores.
+- **SII / Registro Civil / Conservador**: captura asistida (captcha/login/pago).
+  El modo real lanza `AssistedCaptureRequired` con instrucciones; el dato se
+  carga vía fixture capturado a mano. Ver el docstring de cada módulo.
+- `enrich.py` toma un *seed* (rol, comuna, propietario.rut, lat, lon) y completa
+  el JSON de propiedad consultando cada scraper. Aísla cada fuente: si falla o
+  necesita captura, lo registra en `propiedad["_fuentes"]` y la DD sigue. Deriva
+  `remate.en_remate=True` si el Diario Oficial trae un aviso de remate.
 
 ## Cómo trabaja Javier
 

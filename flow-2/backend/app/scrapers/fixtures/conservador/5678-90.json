@@ -1,0 +1,10 @@
+{
+  "hipotecas": [
+    { "acreedor": "Banco X", "monto_uf": 1800 }
+  ],
+  "prohibiciones": [],
+  "embargos": [
+    { "causa": "C-1234-2024", "tribunal": "1º Juzgado Civil de Maipú" }
+  ],
+  "litigios": []
+}

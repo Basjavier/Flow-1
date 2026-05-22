@@ -1,39 +1,50 @@
 # HANDOVER — flow-2
 
-Estado del proyecto al cierre de la sesión de scaffolding.
+Estado del proyecto al cierre de la sesión de scrapers (fixture-first).
 
-## Estado actual (Sprint 0 — esqueleto corrible)
+## Estado actual (Sprint 1 — scrapers fixture-first)
 
 Lo que **ya funciona**, 100% offline:
 
 - Motor de scoring (`backend/app/scoring/engine.py`) que evalúa reglas declarativas.
 - Reglas iniciales (`backend/app/scoring/rules.yml`): 5 rojas, 4 amarillas.
 - CLI `dd_full.py`: toma un JSON de propiedad, imprime el veredicto en terminal y
-  genera un reporte HTML.
-- 3 propiedades de ejemplo con veredictos verificados:
-  - `las_condes_verde.json` → **VERDE**, sin observaciones.
-  - `maipu_rojo_remate.json` → **ROJO** (remate + embargo + hipoteca).
-  - `san_bernardo_rojo_defuncion.json` → **ROJO** (propietario fallecido).
-- Suite de tests: **18 tests pasando** (`pytest backend/tests`).
+  genera un reporte HTML. Con `--enrich` toma un *seed* y completa los datos con
+  los scrapers antes de evaluar.
+- **Scrapers de las 4 fuentes** (`backend/app/scrapers/`) en modo fixture/real:
+  - IDE Chile (WFS GetFeature → GeoJSON → campos del CIP). Parser real.
+  - Diario Oficial (HTML → avisos; detecta remates). Parser real con BeautifulSoup.
+  - SII, Registro Civil, Conservador: captura asistida (modo real lanza
+    `AssistedCaptureRequired` con instrucciones).
+- `enrich.py`: seed → consulta scrapers → JSON de propiedad, con auditoría por
+  fuente en `propiedad["_fuentes"]`.
+- Ejemplos verificados:
+  - JSON completos: `las_condes_verde`, `maipu_rojo_remate`, `san_bernardo_rojo_defuncion`.
+  - Seeds para `--enrich`: `seed_las_condes.json` → **VERDE** (4 fuentes ok),
+    `seed_maipu.json` → **ROJO** (remate derivado del Diario Oficial + embargo).
+- Suite de tests: **33 tests pasando** (`pytest backend/tests`).
 
-## Lo que NO existe todavía (a diferencia del KICKOFF original)
+## Importante: fixtures vs. respuestas reales
 
-El documento KICKOFF describía un sistema más grande (`saas-dd-mvp`) con scrapers
-reales, captura con Playwright y parsers LLM. **Nada de eso está implementado acá.**
-flow-2 arranca como el esqueleto mínimo y honesto sobre el que construir.
+Los scrapers están escritos contra la **estructura esperada** de cada fuente y
+validados contra fixtures. Todavía **no se validaron contra respuestas reales**:
 
-No hay: scrapers (SII, IDE Chile, Registro Civil, Diario Oficial), captura de
-fixtures reales, parsers LLM de CIP/escrituras, backend web/API, ni base de datos.
+- `scrapers/config/layers.yml`: los `typename` y nombres de campo del WFS de IDE
+  Chile son **placeholders**. Validar con `GetCapabilities` antes de producción.
+- `diario_oficial.py`: el `BUSCADOR_URL` y los selectores HTML son una aproximación.
+  Validar contra un HTML real capturado del buscador.
+
+## Lo que NO existe todavía
+
+No hay: parsers LLM de CIP/escrituras (PDF → JSON), backend web/API, ni base de
+datos. La captura asistida (SII/Registro Civil/Conservador) es manual: el modo
+real no resuelve captcha/login, solo indica qué fixture falta.
 
 ## Próximos pasos sugeridos
 
-1. **Conectar fuentes reales una por una**, siempre con modo fixture primero:
-   capturar una respuesta real, guardarla como fixture, escribir el scraper contra
-   el fixture, y recién después apuntar a producción.
-   - SII (rol → avalúo, destino).
-   - IDE Chile / Geoportal MINVU (capas de zonificación → datos del CIP).
-   - Registro Civil (propietario vivo/fallecido).
-   - Diario Oficial (avisos de remate; ojo: la respuesta es HTML, no JSON).
+1. **Validar cada fuente contra producción**, desde una máquina con acceso
+   (`SCRAPER_FIXTURE_MODE=0`): capturar una respuesta real, guardarla como fixture,
+   y ajustar typenames/selectores donde haga falta.
 2. **Parser LLM del CIP** (PDF → JSON), iterando el prompt contra CIPs reales hasta
    >90% de accuracy en rol, zona, altura máxima y coeficiente de ocupación.
    Acá entra `ANTHROPIC_API_KEY`.

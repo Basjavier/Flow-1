@@ -1,0 +1,9 @@
+{
+  "id": "LC-001",
+  "direccion": "Av. Apoquindo 4500, Las Condes",
+  "comuna": "Las Condes",
+  "rol": "1234-56",
+  "propietario": { "nombre": "Inmobiliaria Verde SpA", "rut": "76.123.456-7" },
+  "lat": -33.4096,
+  "lon": -70.5681
+}
