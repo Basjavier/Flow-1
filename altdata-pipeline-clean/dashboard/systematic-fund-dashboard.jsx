@@ -110,6 +110,89 @@ const generatePortfolioHistory = () => {
   return data;
 };
 
+// ─── LIVE API LAYER ───────────────────────────────────────────────────────────
+// Conecta el dashboard al backend FastAPI. Si la API no responde (o un panel
+// viene vacio) se cae a los datos de muestra de arriba, asi la vista nunca queda
+// en blanco. Apunta a otro host con  ?api=http://host:puerto
+const API_BASE =
+  new URLSearchParams(window.location.search).get("api") ||
+  "http://localhost:8003";
+
+async function apiGet(path) {
+  const r = await fetch(API_BASE + path, { mode: "cors" });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+
+const MACRO_LABELS = {
+  tpm: "TPM BCCh", uf: "UF Hoy", dolar: "USD/CLP",
+  inflacion_mensual: "IPC Mensual", imacec: "IMACEC YoY",
+  balanza_comercial: "Bal. Comercial", credito_bancario: "Crédito Bancario",
+};
+
+function mapSignals(api) {
+  if (!api || !api.signals || !api.signals.length) return null;
+  return api.signals.map((s, i) => ({
+    id:       s.id || ("S" + i),
+    time:     (s.processed_at || "").slice(11, 16) || "--:--",
+    empresa:  s.affected_ticker || s.affected_sector || "—",
+    tipo:     s.category || s.source_type || "HECHO",
+    signal:   s.signal || "NEUTRAL",
+    conf:     typeof s.confidence === "number" ? s.confidence : 0,
+    urgency:  s.urgency || "LOW",
+    action:   s.action || "—",
+    reasoning: s.reasoning || "",
+    cat:      s.category || "OTHER",
+  }));
+}
+
+function mapMacro(api) {
+  const keys = api ? Object.keys(api) : [];
+  if (!keys.length) return null;
+  return keys.map(k => ({
+    label: MACRO_LABELS[k] || k.toUpperCase(),
+    value: typeof api[k].valor === "number"
+      ? api[k].valor.toLocaleString("es-CL")
+      : String(api[k].valor),
+    delta: api[k].fecha || "",
+    trend: "neutral",
+  }));
+}
+
+function useLiveFeed() {
+  const [feed, setFeed] = useState({ online: false });
+  useEffect(() => {
+    let alive = true;
+    async function pull() {
+      const [signals, macro, prices, realEstate] = await Promise.all([
+        apiGet("/signals").catch(() => null),
+        apiGet("/macro").catch(() => null),
+        apiGet("/prices").catch(() => null),
+        apiGet("/real-estate?limit=8").catch(() => null),
+      ]);
+      if (!alive) return;
+      setFeed({
+        online: !!(signals || macro || prices || realEstate),
+        signals: mapSignals(signals),
+        macro: mapMacro(macro),
+        tickers: prices && prices.tickers && prices.tickers.length
+          ? prices.tickers.map(t => ({
+              key: t.key, name: t.name,
+              price: typeof t.price === "number" ? t.price : 0,
+              chg: typeof t.chg === "number" ? t.chg : 0,
+            }))
+          : null,
+        realEstate: realEstate && realEstate.deals && realEstate.deals.length
+          ? realEstate : null,
+      });
+    }
+    pull();
+    const id = setInterval(pull, 30000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+  return feed;
+}
+
 // ─── COMPONENTS ───────────────────────────────────────────────────────────────
 
 const SignalBadge = ({ signal, urgency }) => {
@@ -229,15 +312,43 @@ const CustomTooltip = ({ active, payload, label }) => {
 // ─── MAIN DASHBOARD ───────────────────────────────────────────────────────────
 
 export default function SystematicFundDashboard() {
+  const live = useLiveFeed();
+  const signals = live.signals || CMF_SIGNALS;
+  const macroData = live.macro || MACRO_DATA;
+
   const [activeSignal, setActiveSignal] = useState(CMF_SIGNALS[0]);
   const [activeTab, setActiveTab] = useState("signals");
-  const [priceData] = useState(generatePriceSeries(892.3));
+  const [priceData, setPriceData] = useState(generatePriceSeries(892.3));
   const [carData] = useState(generateCAR());
   const [portfolioData] = useState(generatePortfolioHistory());
   const [tickers, setTickers] = useState(TICKERS);
   const [time, setTime] = useState(new Date());
   const [newSignal, setNewSignal] = useState(false);
   const blinkRef = useRef(null);
+
+  // Señales en vivo: mantener la selección del usuario si sigue presente.
+  useEffect(() => {
+    if (!live.signals || !live.signals.length) return;
+    setActiveSignal(prev =>
+      prev && live.signals.some(s => s.id === prev.id) ? prev : live.signals[0]
+    );
+  }, [live.signals]);
+
+  // Tickers en vivo desde /prices (la animación de abajo agrega jitter).
+  useEffect(() => {
+    if (live.tickers) setTickers(live.tickers);
+  }, [live.tickers]);
+
+  // Historial de precio del ticker de la señal activa (cae a sintético).
+  useEffect(() => {
+    let alive = true;
+    const key = String((activeSignal && activeSignal.empresa) || "ipsa")
+      .toLowerCase().replace(/[^a-z]/g, "").slice(0, 12) || "ipsa";
+    apiGet("/prices/" + key + "/history?days=120")
+      .then(d => { if (alive && d && d.series && d.series.length) setPriceData(d.series); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [activeSignal]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -269,6 +380,14 @@ export default function SystematicFundDashboard() {
     ? ((portfolioData.at(-1).benchmark / portfolioData[0].benchmark - 1) * 100).toFixed(2)
     : "0.00";
   const alpha = (parseFloat(portfolioReturn) - parseFloat(benchReturn)).toFixed(2);
+
+  const reComuna = (live.realEstate && live.realEstate.comuna) || "Las Condes";
+  const reDeals = (live.realEstate && live.realEstate.deals) || [
+    { title: "Depto 78m² Av. Apoquindo", uf: 5840,  uf_m2: 74.9,  delta_pct: -12 },
+    { title: "Depto 55m² Las Urbinas",   uf: 4290,  uf_m2: 78.0,  delta_pct: -8 },
+    { title: "Depto 120m² El Golf",      uf: 12100, uf_m2: 100.8, delta_pct: 6 },
+    { title: "Depto 65m² Manquehue",     uf: 5525,  uf_m2: 85.0,  delta_pct: -3 },
+  ];
 
   return (
     <div style={{
@@ -334,7 +453,7 @@ export default function SystematicFundDashboard() {
                 color: "#ff4455", fontSize: 12, fontWeight: 700,
                 animation: newSignal ? "blink 0.5s 6" : "none",
               }}>
-                {CMF_SIGNALS.filter(s => s.urgency === "HIGH").length}
+                {signals.filter(s => s.urgency === "HIGH").length}
               </span>
               <span style={{ color: "#555", fontSize: 12 }}>HIGH</span>
             </div>
@@ -342,12 +461,13 @@ export default function SystematicFundDashboard() {
           <div style={{ color: "#444", fontSize: 11 }}>
             {time.toLocaleTimeString("es-CL")}
           </div>
-          <div style={{
-            width: 8, height: 8, borderRadius: "50%",
-            background: "#00ff88",
-            boxShadow: "0 0 8px #00ff88",
-            animation: "pulse 2s infinite",
-          }} />
+          <div title={live.online ? "API conectada" : "API offline — datos de muestra"}
+            style={{
+              width: 8, height: 8, borderRadius: "50%",
+              background: live.online ? "#00ff88" : "#ffbb00",
+              boxShadow: `0 0 8px ${live.online ? "#00ff88" : "#ffbb00"}`,
+              animation: "pulse 2s infinite",
+            }} />
         </div>
       </div>
 
@@ -401,11 +521,11 @@ export default function SystematicFundDashboard() {
                   CMF FEED — HECHOS ESENCIALES
                 </span>
                 <span style={{ color: "#333", fontSize: 9 }}>
-                  {CMF_SIGNALS.length} HOY
+                  {signals.length} HOY
                 </span>
               </div>
 
-              {CMF_SIGNALS.map((sig, i) => (
+              {signals.map((sig, i) => (
                 <div key={sig.id}
                   onClick={() => setActiveSignal(sig)}
                   style={{
@@ -682,7 +802,7 @@ export default function SystematicFundDashboard() {
           <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
               gap: 12, marginBottom: 24 }}>
-              {MACRO_DATA.map(m => (
+              {macroData.map(m => (
                 <MetricCard key={m.label} {...m} />
               ))}
             </div>
@@ -871,15 +991,10 @@ export default function SystematicFundDashboard() {
               borderRadius: 2, padding: 16 }}>
               <div style={{ color: "#555", fontSize: 9, letterSpacing: 2,
                 marginBottom: 14 }}>
-                PORTAL INMOBILIARIO — TOP DEALS · LAS CONDES
+                PORTAL INMOBILIARIO — TOP DEALS · {reComuna.toUpperCase()}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {[
-                  { title: "Depto 78m² Av. Apoquindo", uf: 5840, uf_m2: 74.9, delta: "-12% vs zona" },
-                  { title: "Depto 55m² Las Urbinas", uf: 4290, uf_m2: 78.0, delta: "-8% vs zona" },
-                  { title: "Depto 120m² El Golf", uf: 12100, uf_m2: 100.8, delta: "+6% vs zona" },
-                  { title: "Depto 65m² Manquehue", uf: 5525, uf_m2: 85.0, delta: "-3% vs zona" },
-                ].map((prop, i) => (
+                {reDeals.map((prop, i) => (
                   <div key={i} style={{
                     display: "flex", justifyContent: "space-between",
                     alignItems: "center",
@@ -900,11 +1015,11 @@ export default function SystematicFundDashboard() {
                       UF/m² {prop.uf_m2}
                     </span>
                     <span style={{
-                      color: prop.delta.startsWith("-") ? "#00ff88" : "#ff4455",
+                      color: prop.delta_pct <= 0 ? "#00ff88" : "#ff4455",
                       fontSize: 10, width: 120, textAlign: "right",
                       fontWeight: 600,
                     }}>
-                      {prop.delta}
+                      {prop.delta_pct > 0 ? "+" : ""}{prop.delta_pct}% vs zona
                     </span>
                   </div>
                 ))}

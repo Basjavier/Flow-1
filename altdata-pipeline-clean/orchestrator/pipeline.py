@@ -19,7 +19,7 @@ class AltDataPipeline:
 
     COMUNAS_RE = [
         "Las Condes", "Providencia", "Vitacura",
-        "Nunoa", "Santiago Centro"
+        "Ñuñoa", "Santiago Centro"
     ]
 
     def __init__(self):
