@@ -179,20 +179,29 @@ function mapMacro(api) {
   }));
 }
 
+function mapPipeline(api) {
+  if (!api || !api.runs || !api.runs.length) return null;
+  const latest = {};
+  api.runs.forEach(r => { if (!latest[r.source]) latest[r.source] = r; });
+  return latest;
+}
+
 function useLiveFeed() {
   const [feed, setFeed] = useState({ online: false });
   useEffect(() => {
     let alive = true;
     async function pull() {
-      const [signals, macro, prices, realEstate] = await Promise.all([
+      const [signals, macro, prices, realEstate, pstatus, cost] = await Promise.all([
         apiGet("/signals").catch(() => null),
         apiGet("/macro").catch(() => null),
         apiGet("/prices").catch(() => null),
         apiGet("/real-estate?limit=8").catch(() => null),
+        apiGet("/pipeline/status").catch(() => null),
+        apiGet("/cost").catch(() => null),
       ]);
       if (!alive) return;
       setFeed({
-        online: !!(signals || macro || prices || realEstate),
+        online: !!(signals || macro || prices || realEstate || pstatus || cost),
         signals: mapSignals(signals),
         macro: mapMacro(macro),
         tickers: prices && prices.tickers && prices.tickers.length
@@ -204,6 +213,8 @@ function useLiveFeed() {
           : null,
         realEstate: realEstate && realEstate.deals && realEstate.deals.length
           ? realEstate : null,
+        pipeline: mapPipeline(pstatus),
+        cost: cost || null,
       });
     }
     pull();
@@ -408,6 +419,44 @@ function SystematicFundDashboard() {
     { title: "Depto 120m² El Golf",      uf: 12100, uf_m2: 100.8, delta_pct: 6 },
     { title: "Depto 65m² Manquehue",     uf: 5525,  uf_m2: 85.0,  delta_pct: -3 },
   ];
+
+  const PIPE_SAMPLE = [
+    { name: "CMF Hechos Esenciales", status: "LIVE", last: "hace 12 min", count: 5, color: "#00ff88" },
+    { name: "BCCh Macro Series",     status: "LIVE", last: "hace 2h",     count: 7, color: "#00ff88" },
+    { name: "Portal Inmobiliario",   status: "DEMO", last: "modo demo",   count: 20, color: "#ffbb00" },
+    { name: "BCS Volumen",           status: "PENDING", last: "en construcción", count: 0, color: "#444" },
+    { name: "Job Postings",          status: "PENDING", last: "en construcción", count: 0, color: "#444" },
+    { name: "Diario Oficial NLP",    status: "PENDING", last: "en construcción", count: 0, color: "#444" },
+  ];
+  const pipeColor = st => st === "OK" ? "#00ff88" : st === "ERROR" ? "#ff4455" : "#ffbb00";
+  const pipeRows = live.pipeline
+    ? [["CMF", "CMF Hechos Esenciales"], ["BCCH", "BCCh Macro Series"], ["RE", "Portal Inmobiliario"]]
+        .map(([k, name]) => {
+          const r = live.pipeline[k];
+          return r
+            ? { name, status: r.status === "OK" ? "LIVE" : r.status,
+                last: String(r.started_at || "").slice(11, 16) || "—",
+                count: r.records || 0, color: pipeColor(r.status) }
+            : { name, status: "—", last: "sin datos", count: 0, color: "#444" };
+        })
+        .concat(PIPE_SAMPLE.slice(3))
+    : PIPE_SAMPLE;
+
+  const fmtK = n => n >= 1000 ? (n / 1000).toFixed(0) + "K" : String(n);
+  const COST_SAMPLE = [
+    { label: "TOKENS USADOS",  value: "284K",  sub: "de ~857K/mes" },
+    { label: "COSTO API HOY",  value: "$0.08", sub: "Haiku + Sonnet" },
+    { label: "PROYECCIÓN MES", value: "$2.40", sub: "con caching" },
+    { label: "MODELO MIX",     value: "80/20", sub: "Haiku/Sonnet" },
+  ];
+  const costCards = live.cost
+    ? [
+        { label: "TOKENS USADOS",     value: fmtK(live.cost.estimated_tokens || 0), sub: `${live.cost.total_signals_processed || 0} señales` },
+        { label: "COSTO ESTIMADO",    value: "$" + (live.cost.estimated_cost_usd || 0), sub: "Haiku + Sonnet" },
+        { label: "HECHOS PROCESADOS", value: fmtK(live.cost.total_hechos_scraped || 0), sub: "CMF" },
+        { label: "MODELO MIX",        value: "80/20", sub: "Haiku/Sonnet" },
+      ]
+    : COST_SAMPLE;
 
   return (
     <div style={{
@@ -928,20 +977,7 @@ function SystematicFundDashboard() {
               </div>
               <div style={{ display: "grid",
                 gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-                {[
-                  { name: "CMF Hechos Esenciales", status: "LIVE",
-                    last: "hace 12 min", count: 5, color: "#00ff88" },
-                  { name: "BCCh Macro Series", status: "LIVE",
-                    last: "hace 2h", count: 7, color: "#00ff88" },
-                  { name: "Portal Inmobiliario", status: "DEMO",
-                    last: "modo demo", count: 20, color: "#ffbb00" },
-                  { name: "BCS Volumen", status: "PENDING",
-                    last: "en construcción", count: 0, color: "#444" },
-                  { name: "Job Postings", status: "PENDING",
-                    last: "en construcción", count: 0, color: "#444" },
-                  { name: "Diario Oficial NLP", status: "PENDING",
-                    last: "en construcción", count: 0, color: "#444" },
-                ].map(src => (
+                {pipeRows.map(src => (
                   <div key={src.name} style={{
                     background: "#070707",
                     border: `1px solid ${src.color}25`,
@@ -980,12 +1016,7 @@ function SystematicFundDashboard() {
               </div>
               <div style={{ display: "grid",
                 gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
-                {[
-                  { label: "TOKENS USADOS", value: "284K", sub: "de ~857K/mes" },
-                  { label: "COSTO API HOY", value: "$0.08", sub: "Haiku + Sonnet" },
-                  { label: "PROYECCIÓN MES", value: "$2.40", sub: "con caching" },
-                  { label: "MODELO MIX", value: "80/20", sub: "Haiku/Sonnet" },
-                ].map(m => (
+                {costCards.map(m => (
                   <div key={m.label} style={{
                     background: "#070707", border: "1px solid #1a1a1a",
                     padding: "12px 14px", borderRadius: 2,

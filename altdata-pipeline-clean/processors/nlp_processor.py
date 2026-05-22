@@ -4,7 +4,7 @@ from datetime import datetime
 from anthropic import Anthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
 from loguru import logger
-from config.settings import NLP_MODEL_HIGH_VOLUME, NLP_MODEL_MACRO, ANTHROPIC_API_KEY
+from config.settings import NLP_MODEL_HIGH_VOLUME, NLP_MODEL_MACRO, ANTHROPIC_API_KEY, DEMO_MODE
 
 
 def _parse_llm_json(raw: str) -> dict | None:
@@ -31,10 +31,53 @@ def _parse_llm_json(raw: str) -> dict | None:
 class NLPProcessor:
 
     def __init__(self):
-        self.client = Anthropic(api_key=ANTHROPIC_API_KEY)
+        # Sin key (o en demo) no instanciamos cliente: las señales se generan
+        # localmente con heurística para que el pipeline corra offline.
+        self.client = Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+
+    def _demo_signal(self, hecho: dict) -> dict:
+        """Señal sintética derivada del hecho (modo demo / sin API key)."""
+        tipo    = (hecho.get("tipo_documento") or "").lower()
+        desc    = (hecho.get("descripcion") or "").lower()
+        empresa = hecho.get("empresa") or "N/A"
+        if "adquis" in tipo or "opa" in desc or "fusi" in tipo:
+            sig, conf, urg, cat = "BULLISH", 0.91, "HIGH", "MA"
+            action = f"LONG {empresa} CI — target M&A"
+        elif "dividendo" in tipo or "dividendo" in desc:
+            sig, conf, urg, cat = "BULLISH", 0.86, "HIGH", "DIVIDEND"
+            action = f"LONG {empresa} CI — yield play"
+        elif "deuda" in tipo or "bono" in desc:
+            sig, conf, urg, cat = "BEARISH", 0.74, "MEDIUM", "DEBT_ISSUANCE"
+            action = f"REDUCE {empresa} CI — dilución potencial"
+        elif "directivo" in tipo or "cfo" in desc or "ceo" in desc:
+            sig, conf, urg, cat = "WATCHLIST", 0.66, "LOW", "MANAGEMENT_CHANGE"
+            action = "Monitor — esperar confirmación"
+        elif "contrato" in tipo or "offtake" in desc or "acuerdo" in desc:
+            sig, conf, urg, cat = "BULLISH", 0.82, "MEDIUM", "OTHER"
+            action = f"ADD {empresa} CI — re-rating por contrato"
+        else:
+            sig, conf, urg, cat = "NEUTRAL", 0.60, "LOW", "OTHER"
+            action = None
+        return {
+            "signal":          sig,
+            "confidence":      conf,
+            "category":        cat,
+            "time_horizon":    "DAYS",
+            "affected_ticker": empresa,
+            "affected_sector": None,
+            "reasoning":       (hecho.get("descripcion") or "")[:160],
+            "action":          action,
+            "urgency":         urg,
+            "source_type":     "CMF_HE",
+            "source_date":     hecho.get("fecha"),
+            "processed_at":    datetime.now().isoformat(),
+            "hecho_id":        hecho.get("id"),
+        }
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
     async def extract_signal_cmf(self, hecho: dict) -> dict | None:
+        if DEMO_MODE or not ANTHROPIC_API_KEY:
+            return self._demo_signal(hecho)
         prompt = f"""Eres un analista senior de hedge fund systematic.
 Analiza este hecho esencial CMF y extrae senal de trading.
 

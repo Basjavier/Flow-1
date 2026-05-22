@@ -2,7 +2,7 @@ import httpx
 from datetime import datetime
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
-from config.settings import BCCH_USER, BCCH_PASS, BCCH_SERIES
+from config.settings import BCCH_USER, BCCH_PASS, BCCH_SERIES, DEMO_MODE
 
 
 class BCChScraper:
@@ -61,8 +61,20 @@ class BCChScraper:
             if obs.get("value") not in (None, "N/E", "")
         ]
 
+    def _demo_snapshot(self) -> dict:
+        """Snapshot macro sintetico para modo demo (sin credenciales/internet)."""
+        today = datetime.now().strftime("%Y-%m-%d")
+        demo = {
+            "tpm": 5.0, "uf": 38124.5, "dolar": 968.4,
+            "inflacion_mensual": 0.4, "imacec": 2.1,
+            "credito_bancario": 1.2, "balanza_comercial": 1.2,
+        }
+        return {k: {"fecha": today, "valor": v, "serie": k} for k, v in demo.items()}
+
     async def get_macro_snapshot(self) -> dict:
         """Descarga todas las series en paralelo. Retorna último valor de cada una."""
+        if DEMO_MODE:
+            return self._demo_snapshot()
         import asyncio
 
         async def fetch_one(key):

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
+from config.settings import DEMO_MODE
 
 
 class CMFScraper:
@@ -28,10 +29,43 @@ class CMFScraper:
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=10))
     async def fetch_hechos_esenciales(self, days_back: int = 1) -> list[dict]:
+        if DEMO_MODE:
+            return self._demo_hechos()
         fecha_desde = (
             datetime.now() - timedelta(days=days_back)
         ).strftime("%Y-%m-%d")
         return await self._scrape_portal(fecha_desde)
+
+    def _demo_hechos(self) -> list[dict]:
+        """Hechos esenciales sinteticos para modo demo (sin internet)."""
+        now = datetime.now()
+        samples = [
+            ("FALABELLA", "76.000.001-1", "Adquisición",
+             "OPA sobre filial retail regional; premio estimado 23% sobre precio de cierre."),
+            ("SQM", "76.000.002-2", "Contrato Relevante",
+             "Acuerdo offtake de litio con fabricante asiático de baterías, +40% volumen YoY."),
+            ("ENTEL", "76.000.003-3", "Cambio Directivo",
+             "Renuncia no planificada del CFO; se inicia búsqueda de reemplazo."),
+            ("LATAM", "76.000.004-4", "Emisión de Deuda",
+             "Colocación de bono UF 5M a 10 años; sube ratio deuda/equity."),
+            ("COPEC", "76.000.005-5", "Dividendo",
+             "Dividendo extraordinario de CLP 450 por acción; yield implícito 5.7%."),
+            ("CENCOSUD", "76.000.006-6", "Hecho Esencial",
+             "Resultados trimestrales sobre guidance; márgenes en expansión."),
+        ]
+        return [
+            {
+                "fecha":          now.strftime("%Y-%m-%d"),
+                "empresa":        emp,
+                "rut_emisor":     rut,
+                "tipo_documento": tipo,
+                "descripcion":    desc,
+                "url_documento":  None,
+                "source":         "CMF_DEMO",
+                "scraped_at":     now.isoformat(),
+            }
+            for emp, rut, tipo, desc in samples
+        ]
 
     async def _scrape_portal(self, fecha_desde: str) -> list[dict]:
         """Scraping del portal CMF con Playwright."""
