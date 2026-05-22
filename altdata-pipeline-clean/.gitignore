@@ -1,0 +1,16 @@
+# Secrets
+.env
+
+# Virtualenv
+.venv/
+
+# Runtime data (DuckDB, ChromaDB, logs)
+data/
+*.duckdb
+*.duckdb.wal
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
