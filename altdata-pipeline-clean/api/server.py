@@ -19,11 +19,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# La API solo lee. main.py se asegura de que el archivo + schema existan
-# antes de levantar este servidor, asi que aqui solo abrimos read-only
-# (lo cual permite que el orquestador escriba en paralelo en el mismo
-# proceso sin chocar).
-db = Database()  # writer: DuckDB permite multiples writers en el mismo proceso
+# main.py crea el archivo + schema (bootstrap) antes de levantar este server.
+# Abrimos en read-write: DuckDB permite varias conexiones read-write al mismo
+# archivo dentro del mismo proceso, asi el orquestador (en otro thread) escribe
+# en paralelo sin chocar.
+db = Database()
 
 
 @app.get("/")

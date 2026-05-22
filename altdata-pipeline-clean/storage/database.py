@@ -10,9 +10,10 @@ from config.settings import DUCKDB_PATH
 
 class Database:
     def __init__(self, read_only: bool = False):
-        # Modo writer: lo usa el orquestador. Modo read_only: lo usa la API
-        # (FastAPI corre en otro thread y DuckDB no soporta multiples
-        # escritores sobre el mismo archivo).
+        # El orquestador (writer) y la API abren ambos en read-write: DuckDB
+        # permite varias conexiones read-write al mismo archivo dentro del
+        # MISMO proceso. Ojo: no mezclar read-write y read_only en el mismo
+        # proceso, DuckDB rechaza configuraciones distintas sobre el archivo.
         self.read_only = read_only
         if not read_only:
             # DuckDB no crea el directorio padre; lo aseguramos para que
