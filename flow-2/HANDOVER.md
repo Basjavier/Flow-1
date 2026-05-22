@@ -29,10 +29,19 @@ Lo que **ya funciona**, 100% offline:
 Los scrapers están escritos contra la **estructura esperada** de cada fuente y
 validados contra fixtures. Todavía **no se validaron contra respuestas reales**:
 
-- `scrapers/config/layers.yml`: los `typename` y nombres de campo del WFS de IDE
-  Chile son **placeholders**. Validar con `GetCapabilities` antes de producción.
+- `scrapers/config/layers.yml`: los `typename` y nombres de campo del WFS son
+  **candidatos sin validar**. La fuente real es el Geoportal Open Data MINVU
+  (`ide.minvu.cl`), que es GeoNode y publica zonificación **por comuna** (el visor
+  expone aliases tipo `MINVU::prc-las-condes-3`). Validar con `validar_ide.py`.
 - `diario_oficial.py`: el `BUSCADOR_URL` y los selectores HTML son una aproximación.
   Validar contra un HTML real capturado del buscador.
+
+## Restricción del entorno remoto
+
+El entorno remoto (Claude Code on the web) tiene el **egress de red cerrado**:
+DNS resuelve pero todo GET externo da 403 (probado contra `google.com` e
+`ide.cl`), y WebFetch también. Por eso la validación contra producción **no se
+puede hacer desde acá**; se corre desde tu PC con `standalone-tools/validar_ide.py`.
 
 ## Lo que NO existe todavía
 
@@ -42,9 +51,16 @@ real no resuelve captcha/login, solo indica qué fixture falta.
 
 ## Próximos pasos sugeridos
 
-1. **Validar cada fuente contra producción**, desde una máquina con acceso
-   (`SCRAPER_FIXTURE_MODE=0`): capturar una respuesta real, guardarla como fixture,
-   y ajustar typenames/selectores donde haga falta.
+1. **Validar IDE Chile contra producción** (siguiente paso inmediato), desde tu PC:
+   ```
+   # Listar capas reales y encontrar el typename de la comuna:
+   python standalone-tools/validar_ide.py --capabilities --url https://ide.minvu.cl/geoserver/ows
+   # Consultar un punto, ver los campos y guardar el fixture real:
+   python standalone-tools/validar_ide.py --typename <typename_real> --lat -33.4096 --lon -70.5681 --save
+   ```
+   Con esa salida: corregir `config/layers.yml` (`wfs_base_url`, `typename`,
+   `geom_field`, mapa de `campos`) y el normalizador si hace falta. Después,
+   misma idea con el Diario Oficial (capturar HTML real y ajustar selectores).
 2. **Parser LLM del CIP** (PDF → JSON), iterando el prompt contra CIPs reales hasta
    >90% de accuracy en rol, zona, altura máxima y coeficiente de ocupación.
    Acá entra `ANTHROPIC_API_KEY`.

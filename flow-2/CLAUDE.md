@@ -27,6 +27,7 @@ flow-2/
   backend/app/enrich.py           Seed -> consulta scrapers -> JSON de propiedad
   backend/tests/                  Tests offline (pytest)
   standalone-tools/dd_full.py     CLI: JSON de propiedad -> reporte HTML
+  standalone-tools/validar_ide.py CLI local: descubre/captura datos reales del WFS
   standalone-tools/ejemplos/      Propiedades completas + seeds para --enrich
   scripts/setup.ps1               Bootstrap en Windows
   .env.example                    Plantilla de variables de entorno
@@ -91,9 +92,12 @@ Ver `standalone-tools/ejemplos/` para el formato completo.
   - **real** (`=0`): pega contra producción. Se corre desde una máquina con
     acceso a las fuentes chilenas.
 - **IDE Chile** (`ide_chile.py`): WFS estándar, automatizable. El modo real arma
-  un GetFeature con filtro `INTERSECTS` por lat/lon y parsea GeoJSON. Los
-  typenames/campos en `config/layers.yml` son **placeholders**: validarlos contra
-  el GetCapabilities real antes de producción.
+  un GetFeature con filtro `INTERSECTS` por lat/lon y parsea GeoJSON. La fuente
+  real es el Geoportal Open Data MINVU (`ide.minvu.cl`), que es **GeoNode** y
+  publica las capas de zonificación **por comuna** (no una capa nacional única).
+  Los typenames/campos en `config/layers.yml` son **candidatos sin validar**:
+  confirmalos corriendo `standalone-tools/validar_ide.py` desde una máquina con
+  acceso (el entorno remoto tiene el egress cerrado, no llega a `ide.minvu.cl`).
 - **Diario Oficial** (`diario_oficial.py`): respuesta HTML (no JSON), parser con
   BeautifulSoup. El selector está escrito contra la estructura esperada del
   buscador; **validar contra HTML real** y ajustar `BUSCADOR_URL`/selectores.

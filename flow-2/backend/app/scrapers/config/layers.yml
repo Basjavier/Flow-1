@@ -1,23 +1,34 @@
-# Configuración del scraper WFS de IDE Chile / Geoportal.
+# Configuración del scraper WFS de zonificación (IDE Chile / Geoportal MINVU).
 #
-# IMPORTANTE: los nombres de servicio (typename) y de campos de abajo son
-# PLACEHOLDERS. Hay que validarlos contra el GetCapabilities real del servidor
-# WFS antes de usar en producción:
+# El dato de zonificación (Plan Regulador Comunal) lo publica el Geoportal Open
+# Data MINVU (https://ide.minvu.cl), que corre sobre GeoNode. OJO: las capas son
+# POR COMUNA, no hay una sola capa nacional. El visor expone aliases tipo
+# "MINVU::prc-las-condes-3"; el typename real del WFS hay que confirmarlo.
 #
-#   curl "https://<wfs_base_url>?service=WFS&request=GetCapabilities&version=2.0.0"
+# CÓMO VALIDAR (desde tu PC, que sí tiene acceso a los endpoints chilenos):
 #
-# Una vez que sepas el typename y los campos verdaderos, actualizá este archivo
-# y guardá un fixture real en fixtures/ide_chile/<lat>_<lon>.json (GeoJSON).
+#   # 1) Listar las capas reales y encontrar el typename de tu comuna:
+#   python standalone-tools/validar_ide.py --capabilities \
+#       --url https://ide.minvu.cl/geoserver/ows
+#
+#   # 2) Consultar un punto y ver qué campos trae (para mapearlos abajo):
+#   python standalone-tools/validar_ide.py \
+#       --typename <typename_real> --lat -33.4096 --lon -70.5681 --save
+#
+# Recién con esa salida confirmá/corregí 'wfs_base_url', el 'typename' y el mapa
+# de 'campos'. Mientras tanto los valores de abajo son CANDIDATOS sin validar.
 
-wfs_base_url: "https://www.ide.cl/geoserver/ows"
+wfs_base_url: "https://ide.minvu.cl/geoserver/ows"
 default_srs: "EPSG:4326"
-# Nombre del campo de geometría en la capa (para el filtro espacial CQL).
-geom_field: "geom"
+# GeoNode/PostGIS suele nombrar la columna de geometría 'the_geom' (confirmar).
+geom_field: "the_geom"
 
 capas:
   zonificacion:
-    typename: "ide:plan_regulador_zonas"
+    # Candidato — confirmar con --capabilities. Es por comuna (ej. Las Condes).
+    typename: "geonode:prc_las_condes"
     # Mapea campo del WFS -> campo del CIP en el JSON de la propiedad.
+    # Los nombres de origen son adivinados; ajustalos con la salida de validar_ide.
     campos:
       zona: "zona"
       altura_maxima_m: "altura_max"
