@@ -148,6 +148,72 @@ def _bdh_to_tidy(raw: pd.DataFrame | None) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 # Public pulls
 # --------------------------------------------------------------------------- #
+def get_bond_universe_for(
+    equity_ticker: str,
+    chain_field: str,
+    static_fields: list[str],
+    *,
+    cache_dir: str,
+    cache_label: str,
+    refresh: bool = False,
+    data_dir: Path | None = None,
+) -> pd.DataFrame:
+    """Return static reference data for every bond hanging off ``equity_ticker``.
+
+    Config-free primitive: resolves the bond chain via
+    ``bds(equity_ticker, chain_field)`` then pulls ``static_fields`` per member
+    via ``bdp``. Used directly for peer issuers (``comparables.py``), which have
+    no config file of their own.
+
+    Args:
+        equity_ticker: Bloomberg equity anchor for the bond-chain lookup.
+        chain_field: ``bds`` field returning the chain members.
+        static_fields: Static mnemonics to pull per bond.
+        cache_dir: Subdirectory under ``data/`` to cache into (e.g. the target
+            issuer's short code, so peer pulls live alongside it).
+        cache_label: Cache file label (e.g. ``"universe"`` or ``"peer_HCA"``).
+        refresh: If True, bypass the cache and re-pull from Bloomberg.
+        data_dir: Cache root override (defaults to ``<root>/data``).
+
+    Returns:
+        One row per bond, with a ``security`` column plus the static fields
+        (lower-cased mnemonics as returned by xbbg).
+
+    Raises:
+        RuntimeError: If the chain lookup or static pull fails or is empty.
+    """
+    asof = date.today()
+    path = _cache_path(cache_dir, cache_label, asof, data_dir)
+    if not refresh:
+        cached = _read_cache(path)
+        if cached is not None:
+            return cached
+
+    blp = _blp()
+    try:
+        chain = blp.bds(equity_ticker, chain_field)
+    except Exception as exc:  # noqa: BLE001 - surface any BBG error with guidance
+        raise RuntimeError(
+            f"Bloomberg bds({equity_ticker!r}, {chain_field!r}) failed: {exc}. "
+            f"Check the Terminal is logged in and the field is valid. "
+            f"Alternatives to try for the chain field: 'CAPITAL_STRUCTURE', "
+            f"'CURVE_MEMBERS'; or run CSHF<GO> on {equity_ticker} and export the curve."
+        ) from exc
+
+    members = _extract_chain_members(chain)
+    if not members:
+        raise RuntimeError(
+            f"No bonds resolved for {equity_ticker!r} via field {chain_field!r}. "
+            f"Check that field returns a member list (try 'CAPITAL_STRUCTURE' or "
+            f"'CURVE_MEMBERS') and that {equity_ticker} has an active bond curve."
+        )
+    logger.info("Resolved %d bond-chain members for %s", len(members), equity_ticker)
+
+    static = _pull_static(blp, members, static_fields)
+    _write_cache(static, path)
+    return static
+
+
 def get_bond_universe(
     issuer: str,
     *,
@@ -155,11 +221,10 @@ def get_bond_universe(
     config: TradeConfig | None = None,
     data_dir: Path | None = None,
 ) -> pd.DataFrame:
-    """Return static reference data for every bond of ``issuer``.
+    """Return static reference data for every bond of ``issuer`` (config-driven).
 
-    Resolves the issuer's bond chain via ``bds(equity_ticker, bond_chain_field)``
-    then pulls the configured static fields for each member via ``bdp``. No
-    universe filtering is applied here -- that happens in ``universe.py``.
+    Thin wrapper over :func:`get_bond_universe_for` using the issuer's config.
+    No universe filtering is applied here -- that happens in ``universe.py``.
 
     Args:
         issuer: Issuer code matching ``config/<issuer>.yaml``.
@@ -168,46 +233,18 @@ def get_bond_universe(
         data_dir: Cache root override (defaults to ``<root>/data``).
 
     Returns:
-        One row per bond, with a ``security`` column plus the configured static
-        fields (lower-cased mnemonics as returned by xbbg).
-
-    Raises:
-        RuntimeError: If the chain lookup or static pull fails or is empty.
+        One row per bond (see :func:`get_bond_universe_for`).
     """
     cfg = config or load_config(issuer)
-    asof = date.today()
-    path = _cache_path(cfg.issuer.short, "universe", asof, data_dir)
-    if not refresh:
-        cached = _read_cache(path)
-        if cached is not None:
-            return cached
-
-    blp = _blp()
-    root = cfg.issuer.equity_ticker
-    field = cfg.bloomberg.bond_chain_field
-
-    try:
-        chain = blp.bds(root, field)
-    except Exception as exc:  # noqa: BLE001 - surface any BBG error with guidance
-        raise RuntimeError(
-            f"Bloomberg bds({root!r}, {field!r}) failed: {exc}. "
-            f"Check the Terminal is logged in and the field is valid. "
-            f"Alternatives to try for the chain field: 'CAPITAL_STRUCTURE', "
-            f"'CURVE_MEMBERS'; or run CSHF<GO> on {root} and export the curve."
-        ) from exc
-
-    members = _extract_chain_members(chain)
-    if not members:
-        raise RuntimeError(
-            f"No bonds resolved for {root!r} via field {field!r}. "
-            f"Check that field returns a member list (try 'CAPITAL_STRUCTURE' or "
-            f"'CURVE_MEMBERS') and that {root} has an active bond curve."
-        )
-    logger.info("Resolved %d bond-chain members for %s", len(members), cfg.issuer.short)
-
-    static = _pull_static(blp, members, cfg.bloomberg.static_fields)
-    _write_cache(static, path)
-    return static
+    return get_bond_universe_for(
+        cfg.issuer.equity_ticker,
+        cfg.bloomberg.bond_chain_field,
+        cfg.bloomberg.static_fields,
+        cache_dir=cfg.issuer.short,
+        cache_label="universe",
+        refresh=refresh,
+        data_dir=data_dir,
+    )
 
 
 def get_bond_timeseries(

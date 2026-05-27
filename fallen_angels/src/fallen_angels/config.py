@@ -13,7 +13,7 @@ from datetime import date
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,25 @@ class BloombergFields(_Strict):
     bond_chain_field: str
     static_fields: list[str]
     timeseries_fields: list[str]
+    # Which timeseries mnemonic is the Z-spread used by signals.py.
+    zspread_field: str = "Z_SPRD_MID"
+
+
+class Scoring(_Strict):
+    """Weights for the universe composite score (renormalized over available factors)."""
+
+    amount_outstanding: float = 0.30
+    seasoning: float = 0.15
+    liquidity: float = 0.25
+    spread_vs_curve: float = 0.30
+
+    def as_dict(self) -> dict[str, float]:
+        return {
+            "amount_outstanding": self.amount_outstanding,
+            "seasoning": self.seasoning,
+            "liquidity": self.liquidity,
+            "spread_vs_curve": self.spread_vs_curve,
+        }
 
 
 class Thresholds(_Strict):
@@ -94,6 +113,7 @@ class TradeConfig(_Strict):
     bloomberg: BloombergFields
     thresholds: Thresholds
     dates: Dates
+    scoring: Scoring = Field(default_factory=Scoring)
 
 
 def load_config(issuer: str, config_dir: Path | None = None) -> TradeConfig:

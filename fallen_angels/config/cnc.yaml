@@ -71,6 +71,15 @@ bloomberg:
     - "YAS_BOND_YLD"
     - "Z_SPRD_MID"
     - "OAS_SPREAD_MID"
+  zspread_field: "Z_SPRD_MID"   # field signals.py uses for the spread differential
+
+# Universe composite-score weights (Phase 2). Renormalized over whichever
+# factors are available at scoring time; tune freely, they need not sum to 1.
+scoring:
+  amount_outstanding: 0.30
+  seasoning: 0.15
+  liquidity: 0.25
+  spread_vs_curve: 0.30
 
 # Entry/exit logic (consumed by signals.py / alerts.py in later phases).
 thresholds:
