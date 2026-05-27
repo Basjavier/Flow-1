@@ -1,0 +1,14 @@
+# Parquet cache — re-pulled from Bloomberg, never committed.
+data/*
+!data/.gitkeep
+
+# uv / venv
+.venv/
+uv.lock
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/

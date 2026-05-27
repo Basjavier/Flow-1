@@ -1,0 +1,85 @@
+# Trade configuration: Centene Corp (CNC) fallen-angel long/short.
+# Everything issuer-specific lives here; code reads from this file and hardcodes
+# nothing. Copy this file to add a new issuer (e.g. config/f.yaml for Ford).
+
+issuer:
+  name: Centene Corporation
+  short: CNC
+  # Bloomberg root used to resolve the issuer's bond chain. The listed equity is
+  # the most reliable anchor for a bond-chain lookup; see data_pull.py.
+  equity_ticker: "CNC US Equity"
+  # Senior-unsecured corp ticker family (search-root fallback).
+  corp_ticker: "CNC"
+  downgrade_date: 2026-04-15   # S&P cut to BB+. TODO confirm exact date on RATC<GO>.
+  prior_rating: BBB-
+  new_rating: BB+
+  rating_agency: S&P
+
+universe:
+  # Bond-selection filters applied in universe.py (Phase 2). data_pull returns
+  # the full chain; these bounds are not applied at the pull stage.
+  maturity_min: 2027-01-01
+  maturity_max: 2032-12-31
+  min_amount_outstanding_usd: 500000000
+  seniority: ["Sr Unsecured"]
+  currency: USD
+
+# BB+ healthcare comparables for the spread benchmark (used in Phase 2).
+# Defaults proposed by the engineer; confirm/adjust before Phase 2.
+peers:
+  - name: HCA Healthcare
+    ticker: "HCA US Equity"
+    rationale: "Large-cap hospital operator, BB+/BBB- crossover credit, deep liquid curve"
+  - name: Humana
+    ticker: "HUM US Equity"
+    rationale: "Managed-care peer; closest business-model comparable to CNC"
+  - name: Molina Healthcare
+    ticker: "MOH US Equity"
+    rationale: "Medicaid-focused managed care; near pure-play overlap with CNC mix"
+  - name: Bausch Health
+    ticker: "BHC US Equity"
+    rationale: "BB healthcare issuer; diversifies basket beyond managed care"
+
+hedge:
+  instrument: "HYG US Equity"   # iShares iBoxx $ HY Corp ETF (primary systemic hedge)
+  notional_ratio_low: 0.50      # short HYG at 50-70% of long notional
+  notional_ratio_high: 0.70
+
+# Systemic / benchmark series pulled by get_index_timeseries.
+indices:
+  - "HYG US Equity"                 # iShares HY corp ETF (primary hedge)
+  - "JNK US Equity"                 # SPDR Bloomberg HY bond ETF (cross-check)
+  - "IBOXHYSE Index"                # Markit iBoxx USD Liquid HY (TODO confirm ticker)
+  - "H0A0 Index"                    # ICE BofA US High Yield OAS (TODO confirm)
+  - "H4A1 Index"                    # ICE BofA BB US High Yield OAS (TODO confirm)
+
+# Bloomberg field mnemonics. Centralized so an uncertain field can be swapped
+# without touching code. See data_pull.py for documented alternatives.
+bloomberg:
+  bond_chain_field: "CURVE_TICKERS"   # TODO alternatives: CAPITAL_STRUCTURE, CURVE_MEMBERS
+  static_fields:
+    - "ID_CUSIP"
+    - "SECURITY_DES"
+    - "MATURITY"
+    - "CPN"
+    - "AMT_OUTSTANDING"
+    - "PAYMENT_RANK"
+    - "ISSUE_DT"
+    - "CRNCY"
+  timeseries_fields:
+    - "PX_LAST"
+    - "YAS_BOND_YLD"
+    - "Z_SPRD_MID"
+    - "OAS_SPREAD_MID"
+
+# Entry/exit logic (consumed by signals.py / alerts.py in later phases).
+thresholds:
+  entry_z: 1.5            # enter when CNC-vs-peer z-spread differential > +1.5 sigma
+  exit_converge_z: 0.5    # exit when differential converges below +0.5 sigma
+  stop_widen_bps: 100.0   # hard stop if spread widens >100 bps from entry
+  max_hold_months: 18     # time stop
+  zscore_window_days: 504 # rolling window for the z-score (~24 trading months)
+
+dates:
+  history_start: 2015-01-01  # start of the downgrade factor study (Phase 3)
+  lookback_years: 2          # rolling-window basis for the live z-score
