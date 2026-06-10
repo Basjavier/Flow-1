@@ -81,6 +81,14 @@ scoring:
   liquidity: 0.25
   spread_vs_curve: 0.30
 
+# Risk-engine parameters (Phase 4). parallel_shocks_bps drives the spread
+# scenario grid; hedge_beta_to_issuer translates issuer-spread shocks to
+# HYG % moves via the hedge's modified duration.
+risk:
+  parallel_shocks_bps: [-200, -150, -100, -50, 0, 50, 100, 150, 200]
+  hedge_beta_to_issuer: 0.40
+  cvar_alpha: 0.05
+
 # Entry/exit logic (consumed by signals.py / alerts.py in later phases).
 thresholds:
   entry_z: 1.5            # enter when CNC-vs-peer z-spread differential > +1.5 sigma

@@ -89,6 +89,19 @@ class Scoring(_Strict):
         }
 
 
+class Risk(_Strict):
+    """Scenario-engine + tail-measure parameters (consumed by risk.py)."""
+
+    parallel_shocks_bps: list[float] = Field(
+        default_factory=lambda: [-200.0, -150.0, -100.0, -50.0, 0.0, 50.0, 100.0, 150.0, 200.0]
+    )
+    # HYG OAS move per unit of issuer spread move (0.40 = HYG widens 40 bps
+    # when the issuer widens 100 bps). Translates spread shocks to a hedge %
+    # price shock via the hedge's modified duration.
+    hedge_beta_to_issuer: float = 0.40
+    cvar_alpha: float = 0.05
+
+
 class Thresholds(_Strict):
     entry_z: float
     exit_converge_z: float
@@ -114,6 +127,7 @@ class TradeConfig(_Strict):
     thresholds: Thresholds
     dates: Dates
     scoring: Scoring = Field(default_factory=Scoring)
+    risk: Risk = Field(default_factory=Risk)
 
 
 def load_config(issuer: str, config_dir: Path | None = None) -> TradeConfig:

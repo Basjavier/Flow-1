@@ -1,0 +1,40 @@
+# Example CNC long/short positions (illustrative; not a live book).
+# Prices, spreads, and durations are placeholders -- replace from your blotter
+# before running portfolio.daily_pnl against real marks.
+#
+# Schema: see PortfolioConfig in src/fallen_angels/portfolio.py.
+
+name: cnc_long_short_v1
+issuer: CNC
+positions:
+  - security: "CNC 5.25 04/01/2029 Corp"
+    kind: bond
+    side: long
+    quantity: 5000000
+    entry_date: 2026-04-20
+    entry_price: 92.50
+    entry_spread_bps: 380
+    coupon_pct: 5.25
+    modified_duration: 4.1
+    label: "CNC 5.25 2029"
+
+  - security: "CNC 4.625 06/01/2031 Corp"
+    kind: bond
+    side: long
+    quantity: 3000000
+    entry_date: 2026-04-20
+    entry_price: 88.00
+    entry_spread_bps: 410
+    coupon_pct: 4.625
+    modified_duration: 5.6
+    label: "CNC 4.625 2031"
+
+  - security: "HYG US Equity"
+    kind: hedge
+    side: short
+    quantity: 30000          # shares (positive; side=short carries the sign)
+    entry_date: 2026-04-20
+    entry_price: 78.50
+    coupon_pct: 0.0
+    modified_duration: 3.6   # ~HYG OAD; drives spread->price translation
+    label: "HYG hedge"

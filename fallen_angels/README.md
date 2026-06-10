@@ -66,14 +66,18 @@ schema in `src/fallen_angels/config.py`. To add an issuer, copy `cnc.yaml` to
 fallen_angels/
 ├── config/
 │   ├── <issuer>.yaml           # per-trade params (validated by config.py)
-│   └── fallen_angel_events.yaml# curated IG->HY downgrades for the backtest
+│   ├── fallen_angel_events.yaml# curated IG->HY downgrades for the backtest
+│   └── positions/<book>.yaml   # live position state for portfolio.py [Phase 4]
 ├── src/fallen_angels/
 │   ├── config.py               # pydantic schema + loader
 │   ├── data_pull.py            # Bloomberg pulls + parquet cache   [Phase 1]
 │   ├── universe.py             # bond screen + composite scoring   [Phase 2]
 │   ├── comparables.py          # BB+ peer basket + weights         [Phase 2]
 │   ├── signals.py              # spread differential + z-score     [Phase 2]
-│   └── backtest.py             # fallen-angel factor study         [Phase 3]
+│   ├── backtest.py             # fallen-angel factor study         [Phase 3]
+│   ├── portfolio.py            # positions + daily P&L decomposition [Phase 4]
+│   ├── risk.py                 # scenario engine + VaR/CVaR          [Phase 4]
+│   └── alerts.py               # threshold engine + JSONL log        [Phase 4]
 ├── notebooks/                  # 01 universe/signal, 02 backtest validation
 ├── data/                       # parquet cache (gitignored)
 ├── reports/                    # memo, weekly template, risk log
@@ -84,5 +88,5 @@ fallen_angels/
 - **Phase 1 (done):** scaffolding + data layer
 - **Phase 2 (done):** `universe.py`, `comparables.py`, `signals.py`
 - **Phase 3 (done):** `backtest.py` fallen-angel factor study
-- **Phase 4:** `portfolio.py`, `risk.py`, `alerts.py`
+- **Phase 4 (done):** `portfolio.py`, `risk.py`, `alerts.py`
 - **Phase 5:** `monitor.py` Streamlit dashboard
