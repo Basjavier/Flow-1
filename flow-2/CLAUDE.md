@@ -28,6 +28,7 @@ flow-2/
   backend/tests/                  Tests offline (pytest)
   standalone-tools/dd_full.py     CLI: JSON de propiedad -> reporte HTML
   standalone-tools/validar_ide.py CLI local: descubre/captura datos reales del WFS
+  standalone-tools/validar_diario.py CLI local: captura/valida HTML real del Diario
   standalone-tools/ejemplos/      Propiedades completas + seeds para --enrich
   scripts/setup.ps1               Bootstrap en Windows
   .env.example                    Plantilla de variables de entorno
@@ -95,9 +96,12 @@ Ver `standalone-tools/ejemplos/` para el formato completo.
   un GetFeature con filtro `INTERSECTS` por lat/lon y parsea GeoJSON. La fuente
   real es el Geoportal Open Data MINVU (`ide.minvu.cl`), que es **GeoNode** y
   publica las capas de zonificación **por comuna** (no una capa nacional única).
-  Los typenames/campos en `config/layers.yml` son **candidatos sin validar**:
-  confirmalos corriendo `standalone-tools/validar_ide.py` desde una máquina con
-  acceso (el entorno remoto tiene el egress cerrado, no llega a `ide.minvu.cl`).
+  El typename se resuelve por comuna vía `typename_por_comuna` en
+  `config/layers.yml` (comuna normalizada: minúsculas, sin tildes, `_`);
+  una comuna sin mapear falla explícito con `ComunaNoMapeada`. Los
+  typenames/campos son **candidatos sin validar**: confirmalos corriendo
+  `standalone-tools/validar_ide.py` desde una máquina con acceso (el entorno
+  remoto tiene el egress cerrado, no llega a `ide.minvu.cl`).
 - **Diario Oficial** (`diario_oficial.py`): respuesta HTML (no JSON), parser con
   BeautifulSoup. El selector está escrito contra la estructura esperada del
   buscador; **validar contra HTML real** y ajustar `BUSCADOR_URL`/selectores.

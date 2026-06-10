@@ -85,6 +85,27 @@ def generar_html(propiedad: dict, resultado: Resultado) -> str:
             "de riesgo según las reglas vigentes.</p>"
         )
 
+    fuentes = propiedad.get("_fuentes") or {}
+    if fuentes:
+        filas = ""
+        for nombre, estado in fuentes.items():
+            ok = str(estado) == "ok"
+            badge = "#1e8e3e" if ok else "#f9a825"
+            etiqueta = "OK" if ok else "PENDIENTE"
+            detalle = "" if ok else html_lib.escape(str(estado))
+            filas += (
+                f'<li><span class="badge" style="background:{badge}">{etiqueta}</span>'
+                f"<span><strong>{html_lib.escape(nombre)}</strong>"
+                f"{' — ' + detalle if detalle else ''}</span></li>"
+            )
+        fuentes_html = f"""  <section>
+    <h2>Fuentes consultadas</h2>
+    <ul class="obs">{filas}</ul>
+  </section>
+"""
+    else:
+        fuentes_html = ""
+
     generado = datetime.now().strftime("%Y-%m-%d %H:%M")
     direccion = html_lib.escape(str(propiedad.get("direccion", "(sin dirección)")))
     rol = html_lib.escape(str(propiedad.get("rol", "?")))
@@ -160,7 +181,7 @@ def generar_html(propiedad: dict, resultado: Resultado) -> str:
     <h2>Observaciones</h2>
     {obs_html}
   </section>
-  <footer>Generado por flow-2 · dd_full · {generado} · Reporte preliminar,
+{fuentes_html}  <footer>Generado por flow-2 · dd_full · {generado} · Reporte preliminar,
   no constituye asesoría legal.</footer>
 </div>
 </body>

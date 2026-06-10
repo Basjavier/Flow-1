@@ -1,0 +1,9 @@
+{
+  "id": "SB-007",
+  "direccion": "Pasaje El Roble 45, San Bernardo",
+  "comuna": "San Bernardo",
+  "rol": "9012-34",
+  "propietario": { "nombre": "María Soto Fuentes", "rut": "8.765.432-1" },
+  "lat": -33.5928,
+  "lon": -70.6996
+}

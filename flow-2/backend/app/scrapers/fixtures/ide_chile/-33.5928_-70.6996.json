@@ -1,0 +1,16 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-70.6996, -33.5928] },
+      "properties": {
+        "zona": "ZH-1",
+        "altura_max": 7,
+        "coef_ocup_suelo": 0.5,
+        "coef_constru": 1.0,
+        "usos": "habitacional"
+      }
+    }
+  ]
+}

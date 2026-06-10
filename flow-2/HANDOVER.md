@@ -9,20 +9,27 @@ Lo que **ya funciona**, 100% offline:
 - Motor de scoring (`backend/app/scoring/engine.py`) que evalúa reglas declarativas.
 - Reglas iniciales (`backend/app/scoring/rules.yml`): 5 rojas, 4 amarillas.
 - CLI `dd_full.py`: toma un JSON de propiedad, imprime el veredicto en terminal y
-  genera un reporte HTML. Con `--enrich` toma un *seed* y completa los datos con
-  los scrapers antes de evaluar.
+  genera un reporte HTML (con sección de fuentes consultadas cuando hay enrich).
+  Con `--enrich` toma un *seed* y completa los datos con los scrapers antes de
+  evaluar.
 - **Scrapers de las 4 fuentes** (`backend/app/scrapers/`) en modo fixture/real:
-  - IDE Chile (WFS GetFeature → GeoJSON → campos del CIP). Parser real.
+  - IDE Chile (WFS GetFeature → GeoJSON → campos del CIP). Parser real. El
+    typename se resuelve **por comuna** (`typename_por_comuna` en layers.yml);
+    comuna sin mapear falla explícito con `ComunaNoMapeada`.
   - Diario Oficial (HTML → avisos; detecta remates). Parser real con BeautifulSoup.
   - SII, Registro Civil, Conservador: captura asistida (modo real lanza
     `AssistedCaptureRequired` con instrucciones).
 - `enrich.py`: seed → consulta scrapers → JSON de propiedad, con auditoría por
   fuente en `propiedad["_fuentes"]`.
+- CLIs locales de validación (se corren desde una máquina con acceso):
+  `validar_ide.py` (capas WFS + captura de fixture) y `validar_diario.py`
+  (captura HTML del buscador + corre el parser real encima para validar selectores).
 - Ejemplos verificados:
   - JSON completos: `las_condes_verde`, `maipu_rojo_remate`, `san_bernardo_rojo_defuncion`.
-  - Seeds para `--enrich`: `seed_las_condes.json` → **VERDE** (4 fuentes ok),
-    `seed_maipu.json` → **ROJO** (remate derivado del Diario Oficial + embargo).
-- Suite de tests: **33 tests pasando** (`pytest backend/tests`).
+  - Seeds para `--enrich`: `seed_las_condes.json` → **VERDE** (fuentes ok),
+    `seed_maipu.json` → **ROJO** (remate derivado del Diario Oficial + embargo),
+    `seed_san_bernardo.json` → **ROJO** (propietario fallecido vía Registro Civil).
+- Suite de tests: **37 tests pasando** (`pytest backend/tests`).
 
 ## Importante: fixtures vs. respuestas reales
 
@@ -58,9 +65,14 @@ real no resuelve captcha/login, solo indica qué fixture falta.
    # Consultar un punto, ver los campos y guardar el fixture real:
    python standalone-tools/validar_ide.py --typename <typename_real> --lat -33.4096 --lon -70.5681 --save
    ```
-   Con esa salida: corregir `config/layers.yml` (`wfs_base_url`, `typename`,
-   `geom_field`, mapa de `campos`) y el normalizador si hace falta. Después,
-   misma idea con el Diario Oficial (capturar HTML real y ajustar selectores).
+   Con esa salida: corregir `config/layers.yml` (`wfs_base_url`,
+   `typename_por_comuna`, `geom_field`, mapa de `campos`) y el normalizador si
+   hace falta. Para el Diario Oficial, mismo flujo con:
+   ```
+   python standalone-tools/validar_diario.py --termino "<rol o dirección>" --save
+   ```
+   que baja el HTML real, le corre el parser encima y te dice al toque si los
+   selectores aguantan.
 2. **Parser LLM del CIP** (PDF → JSON), iterando el prompt contra CIPs reales hasta
    >90% de accuracy en rol, zona, altura máxima y coeficiente de ocupación.
    Acá entra `ANTHROPIC_API_KEY`.

@@ -68,7 +68,11 @@ def enriquecer_propiedad(seed: dict) -> dict:
             lambda: RegistroCivilScraper().fetch(rut=rut),
         )
     if lat is not None and lon is not None:
-        _aplicar(prop, "cip", lambda: IDEChileScraper().fetch(lat=lat, lon=lon))
+        _aplicar(
+            prop,
+            "cip",
+            lambda: IDEChileScraper().fetch(lat=lat, lon=lon, comuna=comuna),
+        )
 
     _derivar(prop)
     return prop

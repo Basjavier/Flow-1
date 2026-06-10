@@ -36,6 +36,15 @@ def test_enrich_maipu_rojo_por_remate_y_embargo():
     assert {"remate_activo", "embargo_vigente"} <= ids
 
 
+def test_enrich_san_bernardo_rojo_por_defuncion():
+    prop = enriquecer_propiedad(_seed("seed_san_bernardo.json"))
+    assert all(estado == "ok" for estado in prop["_fuentes"].values())
+    assert prop["registro_civil"]["propietario_vivo"] is False
+    resultado = evaluar_propiedad(prop)
+    assert resultado.score == "ROJO"
+    assert "propietario_fallecido" in {o.id for o in resultado.observaciones}
+
+
 def test_enrich_aisla_fuente_pendiente(monkeypatch):
     # En modo real las fuentes asistidas quedan 'pendiente' sin romper la DD.
     monkeypatch.setenv("SCRAPER_FIXTURE_MODE", "0")

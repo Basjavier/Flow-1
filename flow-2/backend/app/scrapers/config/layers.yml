@@ -25,8 +25,15 @@ geom_field: "the_geom"
 
 capas:
   zonificacion:
-    # Candidato — confirmar con --capabilities. Es por comuna (ej. Las Condes).
-    typename: "geonode:prc_las_condes"
+    # MINVU publica una capa de zonificación POR COMUNA. La clave es la comuna
+    # normalizada (minúsculas, sin tildes, espacios -> _). Todos los typenames
+    # son candidatos — confirmar cada uno con --capabilities.
+    typename_por_comuna:
+      las_condes: "geonode:prc_las_condes"
+      maipu: "geonode:prc_maipu"
+      san_bernardo: "geonode:prc_san_bernardo"
+    # Fallback si la comuna no está mapeada (dejar vacío para fallar explícito).
+    typename_default: ""
     # Mapea campo del WFS -> campo del CIP en el JSON de la propiedad.
     # Los nombres de origen son adivinados; ajustalos con la salida de validar_ide.
     campos:

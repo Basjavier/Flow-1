@@ -3,7 +3,11 @@ import pytest
 from backend.app.scrapers.base import AssistedCaptureRequired, fixture_mode
 from backend.app.scrapers.conservador import ConservadorScraper
 from backend.app.scrapers.diario_oficial import DiarioOficialScraper
-from backend.app.scrapers.ide_chile import IDEChileScraper
+from backend.app.scrapers.ide_chile import (
+    ComunaNoMapeada,
+    IDEChileScraper,
+    normalizar_comuna,
+)
 from backend.app.scrapers.registro_civil import RegistroCivilScraper
 from backend.app.scrapers.sii import SIIScraper
 
@@ -41,6 +45,23 @@ def test_ide_chile_normaliza_geojson():
     assert cip["coef_constructibilidad"] == 1.8
     # 'usos' (string separado por comas) se normaliza a lista.
     assert cip["uso_permitido"] == ["habitacional", "equipamiento"]
+
+
+def test_normalizar_comuna():
+    assert normalizar_comuna("Maipú") == "maipu"
+    assert normalizar_comuna("San Bernardo") == "san_bernardo"
+    assert normalizar_comuna("LAS CONDES") == "las_condes"
+
+
+def test_ide_chile_typename_por_comuna():
+    scraper = IDEChileScraper()
+    assert scraper.typename_para("Las Condes") == "geonode:prc_las_condes"
+    assert scraper.typename_para("Maipú") == "geonode:prc_maipu"
+
+
+def test_ide_chile_comuna_no_mapeada_falla_explicito():
+    with pytest.raises(ComunaNoMapeada):
+        IDEChileScraper().typename_para("Punta Arenas")
 
 
 def test_diario_oficial_sin_resultados():
