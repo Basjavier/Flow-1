@@ -23,16 +23,21 @@ cd fallen_angels
 uv sync          # creates .venv and installs deps (incl. blpapi from Bloomberg's index)
 ```
 
-## Verify Phase 1 (data layer)
+## Verify
 With the Terminal running and logged in:
 ```bash
+# Phase 1 — data layer (universe + index sample; --refresh / --days N / --log-level DEBUG)
 uv run python -m fallen_angels.data_pull --issuer CNC
+
+# Phase 2 — universe ranking + spread differential (notebooks/01_explore_universe.ipynb)
+uv run jupyter lab
+
+# Phase 3 — fallen-angel factor backtest (also notebooks/02_validate_backtest.ipynb)
+uv run python -m fallen_angels.backtest --issuer CNC
+
+# Offline unit tests (no Bloomberg needed)
+uv run pytest
 ```
-This loads `config/cnc.yaml`, resolves and prints the CNC bond universe, and
-pulls a trailing sample of the benchmark index series. Useful flags:
-- `--refresh` — bypass the on-disk cache and re-pull from Bloomberg
-- `--days N` — trailing days of index history to sample (default 30)
-- `--log-level DEBUG` — verbose logging
 
 ## Data layer behavior
 `src/fallen_angels/data_pull.py` exposes three pulls, each cached to
@@ -59,18 +64,25 @@ schema in `src/fallen_angels/config.py`. To add an issuer, copy `cnc.yaml` to
 ## Layout
 ```
 fallen_angels/
-├── config/<issuer>.yaml        # per-trade params (validated by config.py)
+├── config/
+│   ├── <issuer>.yaml           # per-trade params (validated by config.py)
+│   └── fallen_angel_events.yaml# curated IG->HY downgrades for the backtest
 ├── src/fallen_angels/
 │   ├── config.py               # pydantic schema + loader
-│   └── data_pull.py            # Bloomberg pulls + parquet cache  [Phase 1]
+│   ├── data_pull.py            # Bloomberg pulls + parquet cache   [Phase 1]
+│   ├── universe.py             # bond screen + composite scoring   [Phase 2]
+│   ├── comparables.py          # BB+ peer basket + weights         [Phase 2]
+│   ├── signals.py              # spread differential + z-score     [Phase 2]
+│   └── backtest.py             # fallen-angel factor study         [Phase 3]
+├── notebooks/                  # 01 universe/signal, 02 backtest validation
 ├── data/                       # parquet cache (gitignored)
-├── reports/memo.md             # investment thesis
-└── tests/
+├── reports/                    # memo, weekly template, risk log
+└── tests/                      # offline pytest suite (no Bloomberg)
 ```
 
 ## Roadmap
 - **Phase 1 (done):** scaffolding + data layer
-- **Phase 2:** `universe.py`, `comparables.py`, `signals.py`
-- **Phase 3:** `backtest.py` fallen-angel factor study
+- **Phase 2 (done):** `universe.py`, `comparables.py`, `signals.py`
+- **Phase 3 (done):** `backtest.py` fallen-angel factor study
 - **Phase 4:** `portfolio.py`, `risk.py`, `alerts.py`
-- **Phase 5:** `monitor.py` Streamlit dashboard + tests
+- **Phase 5:** `monitor.py` Streamlit dashboard

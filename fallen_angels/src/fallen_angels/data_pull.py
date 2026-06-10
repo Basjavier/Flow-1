@@ -257,6 +257,7 @@ def get_bond_timeseries(
     refresh: bool = False,
     config: TradeConfig | None = None,
     data_dir: Path | None = None,
+    cache_scope: str | None = None,
 ) -> pd.DataFrame:
     """Return historical ``fields`` for ``cusips`` over ``[start, end]``.
 
@@ -269,6 +270,8 @@ def get_bond_timeseries(
         refresh: If True, bypass cache and re-pull.
         config: Pre-loaded config (loaded from disk if omitted).
         data_dir: Cache root override.
+        cache_scope: Override the cache subdirectory (defaults to the issuer
+            short code); e.g. ``"backtest"`` keeps factor-study pulls separate.
 
     Returns:
         Tidy long frame: ``[date, security, field, value]``.
@@ -280,7 +283,7 @@ def get_bond_timeseries(
     asof = date.today()
     start_s, end_s = _as_date_str(start), _as_date_str(end)
     label = f"bonds_{_hash_key(sorted(cusips), sorted(fields), start_s, end_s)}"
-    path = _cache_path(cfg.issuer.short, label, asof, data_dir)
+    path = _cache_path(cache_scope or cfg.issuer.short, label, asof, data_dir)
     if not refresh:
         cached = _read_cache(path)
         if cached is not None:
@@ -312,6 +315,7 @@ def get_index_timeseries(
     refresh: bool = False,
     config: TradeConfig | None = None,
     data_dir: Path | None = None,
+    cache_scope: str | None = None,
 ) -> pd.DataFrame:
     """Return historical levels for benchmark ``tickers`` (ETFs, spread indices).
 
@@ -325,6 +329,8 @@ def get_index_timeseries(
         refresh: If True, bypass cache and re-pull.
         config: Pre-loaded config (loaded from disk if omitted).
         data_dir: Cache root override.
+        cache_scope: Override the cache subdirectory (defaults to the issuer
+            short code).
 
     Returns:
         Tidy long frame: ``[date, security, field, value]``.
@@ -337,7 +343,7 @@ def get_index_timeseries(
     asof = date.today()
     start_s, end_s = _as_date_str(start), _as_date_str(end)
     label = f"indices_{_hash_key(sorted(tickers), sorted(fields), start_s, end_s)}"
-    path = _cache_path(cfg.issuer.short, label, asof, data_dir)
+    path = _cache_path(cache_scope or cfg.issuer.short, label, asof, data_dir)
     if not refresh:
         cached = _read_cache(path)
         if cached is not None:
@@ -356,6 +362,53 @@ def get_index_timeseries(
     tidy = _bdh_to_tidy(raw)
     _write_cache(tidy, path)
     return tidy
+
+
+def get_bond_static(
+    securities: list[str],
+    fields: list[str],
+    *,
+    issuer: str = "CNC",
+    refresh: bool = False,
+    config: TradeConfig | None = None,
+    data_dir: Path | None = None,
+    cache_scope: str | None = None,
+) -> pd.DataFrame:
+    """Return static reference ``fields`` for explicit ``securities`` via ``bdp``.
+
+    Unlike :func:`get_bond_universe`, no chain lookup is involved -- use this
+    when the securities are already known (e.g. bonds listed explicitly in the
+    backtest events file).
+
+    Args:
+        securities: Bond identifiers (bare CUSIPs or full securities).
+        fields: Static mnemonics (e.g. ``["CPN", "MATURITY", "AMT_OUTSTANDING"]``).
+        issuer: Issuer code, used only to scope the cache directory.
+        refresh: If True, bypass cache and re-pull.
+        config: Pre-loaded config (loaded from disk if omitted).
+        data_dir: Cache root override.
+        cache_scope: Override the cache subdirectory.
+
+    Returns:
+        One row per security with a ``security`` column plus the fields.
+
+    Raises:
+        RuntimeError: If the Bloomberg static pull fails.
+    """
+    cfg = config or load_config(issuer)
+    asof = date.today()
+    label = f"static_{_hash_key(sorted(securities), sorted(fields))}"
+    path = _cache_path(cache_scope or cfg.issuer.short, label, asof, data_dir)
+    if not refresh:
+        cached = _read_cache(path)
+        if cached is not None:
+            return cached
+
+    blp = _blp()
+    resolved = [_as_security(s) for s in securities]
+    static = _pull_static(blp, resolved, fields)
+    _write_cache(static, path)
+    return static
 
 
 # --------------------------------------------------------------------------- #

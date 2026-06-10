@@ -1,0 +1,185 @@
+# Curated S&P IG->HY downgrades ("fallen angels"), 2015-2024, for backtest.py.
+#
+# IMPORTANT: dates below are curated from public record and are approximate.
+# TODO confirm every downgrade_date (and from/to rating) on the Terminal via
+# RATC<GO> on each issuer before trusting the stratified results. There is no
+# clean Bloomberg API field that enumerates rating migrations; the canonical
+# workflow to extend this file is a SRCH<GO>/RATD screen exported by hand.
+#
+# Fields per event: see DowngradeEvent in src/fallen_angels/backtest.py.
+# `bonds: []` means "resolve the issuer's chain off equity_ticker at runtime".
+# For issuers whose equity no longer resolves (taken private / merged), list
+# explicit bond securities instead -- flagged below.
+#
+# Catalyst taxonomy: commodity_collapse | covid_shock | secular_decline | leverage_event
+
+events:
+  - issuer: Freeport-McMoRan
+    ticker: FCX
+    equity_ticker: "FCX US Equity"
+    sector: Materials
+    catalyst: commodity_collapse
+    downgrade_date: 2016-02-11   # TODO confirm RATC<GO>
+    from_rating: BBB-
+    to_rating: BB
+    bonds: []
+
+  - issuer: Southwestern Energy
+    ticker: SWN
+    equity_ticker: "SWN US Equity"
+    sector: Energy
+    catalyst: commodity_collapse
+    downgrade_date: 2016-02-22   # TODO confirm
+    from_rating: BBB-
+    to_rating: BB+
+    bonds: []
+
+  - issuer: Murphy Oil
+    ticker: MUR
+    equity_ticker: "MUR US Equity"
+    sector: Energy
+    catalyst: commodity_collapse
+    downgrade_date: 2016-02-17   # TODO confirm
+    from_rating: BBB-
+    to_rating: BB+
+    bonds: []
+
+  - issuer: Mattel
+    ticker: MAT
+    equity_ticker: "MAT US Equity"
+    sector: Consumer
+    catalyst: secular_decline
+    downgrade_date: 2017-12-19   # TODO confirm (close to year-end 2017)
+    from_rating: BBB-
+    to_rating: BB+
+    bonds: []
+
+  - issuer: Kraft Heinz
+    ticker: KHC
+    equity_ticker: "KHC US Equity"
+    sector: Consumer Staples
+    catalyst: leverage_event
+    downgrade_date: 2020-02-14   # TODO confirm
+    from_rating: BBB-
+    to_rating: BB+
+    bonds: []
+
+  - issuer: Macy's
+    ticker: M
+    equity_ticker: "M US Equity"
+    sector: Retail
+    catalyst: secular_decline
+    downgrade_date: 2020-02-18   # TODO confirm
+    from_rating: BBB-
+    to_rating: BB+
+    bonds: []
+
+  - issuer: Delta Air Lines
+    ticker: DAL
+    equity_ticker: "DAL US Equity"
+    sector: Airlines
+    catalyst: covid_shock
+    downgrade_date: 2020-03-24   # TODO confirm
+    from_rating: BBB-
+    to_rating: BB
+    bonds: []
+
+  - issuer: Ford Motor
+    ticker: F
+    equity_ticker: "F US Equity"
+    sector: Autos
+    catalyst: covid_shock
+    downgrade_date: 2020-03-25   # TODO confirm
+    from_rating: BBB-
+    to_rating: BB+
+    bonds: []
+
+  - issuer: Occidental Petroleum
+    ticker: OXY
+    equity_ticker: "OXY US Equity"
+    sector: Energy
+    catalyst: covid_shock
+    downgrade_date: 2020-03-26   # TODO confirm (leverage from Anadarko deal + oil crash)
+    from_rating: BBB
+    to_rating: BB+
+    bonds: []
+
+  - issuer: Apache
+    ticker: APA
+    equity_ticker: "APA US Equity"
+    sector: Energy
+    catalyst: covid_shock
+    downgrade_date: 2020-03-26   # TODO confirm
+    from_rating: BBB
+    to_rating: BB+
+    bonds: []
+
+  - issuer: Continental Resources
+    ticker: CLR
+    equity_ticker: "CLR US Equity"   # taken private 2022: equity may not resolve.
+    sector: Energy
+    catalyst: covid_shock
+    downgrade_date: 2020-03-24   # TODO confirm
+    from_rating: BBB-
+    to_rating: BB+
+    bonds: []   # TODO list explicit CLR bond securities if the chain lookup fails
+
+  - issuer: Nordstrom
+    ticker: JWN
+    equity_ticker: "JWN US Equity"
+    sector: Retail
+    catalyst: covid_shock
+    downgrade_date: 2020-04-01   # TODO confirm
+    from_rating: BBB-
+    to_rating: BB+
+    bonds: []
+
+  - issuer: Western Midstream
+    ticker: WES
+    equity_ticker: "WES US Equity"
+    sector: Energy Midstream
+    catalyst: covid_shock
+    downgrade_date: 2020-04-10   # TODO confirm
+    from_rating: BBB-
+    to_rating: BB+
+    bonds: []
+
+  - issuer: Royal Caribbean
+    ticker: RCL
+    equity_ticker: "RCL US Equity"
+    sector: Leisure
+    catalyst: covid_shock
+    downgrade_date: 2020-05-13   # TODO confirm
+    from_rating: BBB-
+    to_rating: BB
+    bonds: []
+
+  - issuer: Carnival
+    ticker: CCL
+    equity_ticker: "CCL US Equity"
+    sector: Leisure
+    catalyst: covid_shock
+    downgrade_date: 2020-06-24   # TODO confirm
+    from_rating: BBB-
+    to_rating: BB-
+    bonds: []
+
+  - issuer: Paramount Global
+    ticker: PARA
+    equity_ticker: "PARA US Equity"
+    sector: Media
+    catalyst: secular_decline
+    downgrade_date: 2024-03-27   # TODO confirm
+    from_rating: BBB-
+    to_rating: BB+
+    bonds: []
+
+  - issuer: Walgreens Boots Alliance
+    ticker: WBA
+    equity_ticker: "WBA US Equity"
+    sector: Retail
+    catalyst: secular_decline
+    downgrade_date: 2024-12-20   # TODO confirm exact date / agency sequencing
+    from_rating: BBB-
+    to_rating: BB+
+    bonds: []
