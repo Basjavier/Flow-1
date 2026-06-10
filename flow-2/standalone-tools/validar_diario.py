@@ -77,7 +77,11 @@ def main() -> None:
             print(f"      {pub['url']}")
     if not pubs:
         print("  (nada — si la página SÍ muestra resultados, hay que ajustar")
-        print("   los selectores de diario_oficial.py contra este HTML)")
+        print("   los selectores de diario_oficial.py contra este HTML)\n")
+        # Snippet del HTML real para diagnosticar: ¿estamos en el buscador correcto
+        # o el endpoint nos devolvió otra cosa (login, error, edición del día)?
+        muestra = " ".join(html.split())[:600]
+        print(f"  Primeros 600 chars del HTML recibido:\n  {muestra}")
 
     if args.save:
         if not args.termino:

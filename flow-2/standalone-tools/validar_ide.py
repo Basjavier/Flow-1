@@ -47,7 +47,7 @@ def _config() -> dict:
     return yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
 
 
-def listar_capabilities(url: str) -> None:
+def listar_capabilities(url: str, match: str | None = None) -> None:
     params = {"service": "WFS", "version": "2.0.0", "request": "GetCapabilities"}
     r = requests.get(url, params=params, headers=HEADERS, timeout=30)
     r.raise_for_status()
@@ -58,7 +58,8 @@ def listar_capabilities(url: str) -> None:
         print("No se encontraron FeatureType. ¿La URL es un WFS válido?")
         print(r.text[:500])
         return
-    print(f"{len(fts)} capas publicadas en {url}:\n")
+    needle = (match or "").lower().strip()
+    capas = []
     for ft in fts:
         name = title = ""
         for hijo in ft:
@@ -67,6 +68,11 @@ def listar_capabilities(url: str) -> None:
                 name = (hijo.text or "").strip()
             elif tag == "Title":
                 title = (hijo.text or "").strip()
+        if not needle or needle in name.lower() or needle in title.lower():
+            capas.append((name, title))
+    print(f"{len(capas)} de {len(fts)} capa(s) en {url}"
+          + (f" (filtrado por '{match}')" if needle else "") + ":\n")
+    for name, title in capas:
         print(f"  {name}\n      {title}")
 
 
@@ -94,6 +100,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Descubrir y capturar datos del WFS de IDE Chile / MINVU")
     p.add_argument("--url", help="URL del WFS (default: wfs_base_url de layers.yml)")
     p.add_argument("--capabilities", action="store_true", help="Listar las capas del servidor y salir")
+    p.add_argument("--match", help="Filtrar el listado de capas por subcadena (ej. 'prc', 'zonif')")
     p.add_argument("--typename", help="Capa a consultar (ej. geonode:prc_las_condes)")
     p.add_argument("--lat", type=float)
     p.add_argument("--lon", type=float)
@@ -107,7 +114,7 @@ def main() -> None:
     geom = args.geom or cfg.get("geom_field", "geom")
 
     if args.capabilities:
-        listar_capabilities(url)
+        listar_capabilities(url, args.match)
         return
 
     if not (args.typename and args.lat is not None and args.lon is not None):
