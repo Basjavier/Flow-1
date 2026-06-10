@@ -134,9 +134,12 @@ const generatePortfolioHistory = () => {
 // Conecta el dashboard al backend FastAPI. Si la API no responde (o un panel
 // viene vacio) se cae a los datos de muestra de arriba, asi la vista nunca queda
 // en blanco. Apunta a otro host con  ?api=http://host:puerto
+// Si abris el archivo suelto (file://) pega contra localhost:8003. Si lo servis
+// desde la API (http://host:puerto/dashboard/) usa mismo origen y no hace falta
+// CORS. Override siempre con ?api=http://host:puerto
 const API_BASE =
   new URLSearchParams(window.location.search).get("api") ||
-  "http://localhost:8003";
+  (window.location.protocol === "file:" ? "http://localhost:8003" : "");
 
 async function apiGet(path) {
   const r = await fetch(API_BASE + path, { mode: "cors" });

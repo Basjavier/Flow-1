@@ -1,5 +1,7 @@
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from datetime import datetime
 from loguru import logger
 
@@ -19,6 +21,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Servimos el dashboard desde la misma API: GET /dashboard/ entrega index.html
+# y los fetches a /signals, /macro, etc. van al mismo origen sin CORS.
+_DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
+if _DASHBOARD_DIR.is_dir():
+    app.mount(
+        "/dashboard",
+        StaticFiles(directory=str(_DASHBOARD_DIR), html=True),
+        name="dashboard",
+    )
 
 # main.py crea el archivo + schema (bootstrap) antes de levantar este server.
 # Abrimos en read-write: DuckDB permite varias conexiones read-write al mismo
