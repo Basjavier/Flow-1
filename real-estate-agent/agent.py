@@ -1,133 +1,101 @@
 """
-Agente conversacional de remates inmobiliarios.
+Real Estate Agent — CLI conversacional sobre remates judiciales en Chile.
 
-Uso:
-    python real-estate-agent/agent.py
-    python real-estate-agent/agent.py --no-color   # salida sin colores ANSI
-
-El agente utiliza Claude Opus 4.7 con tool use para responder preguntas sobre
-los activos del portafolio Tier-A y ejecutar análisis financieros bajo demanda.
+Usage:
+  cd real-estate-agent && python agent.py
+  ANTHROPIC_API_KEY=sk-... python agent.py
 """
 
 from __future__ import annotations
-
-import argparse
 import json
 import os
 import sys
 
-import anthropic
-
-# Make project root and this directory importable when run directly
+# Path setup — hyphenated dir can't be a package
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(_THIS_DIR)
 for _p in (_THIS_DIR, _PROJECT_ROOT):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from tools import TOOL_DEFINITIONS, dispatch  # type: ignore
+import anthropic
+from tools import TOOL_DEFINITIONS, dispatch
 
 # ---------------------------------------------------------------------------
-# ANSI colour helpers
+# ANSI colors
 # ---------------------------------------------------------------------------
-
-_USE_COLOR = True
-
-
-def _c(code: str, text: str) -> str:
-    if not _USE_COLOR:
-        return text
-    return f"\033[{code}m{text}\033[0m"
-
-
-def cyan(t: str) -> str:
-    return _c("36", t)
-
-
-def green(t: str) -> str:
-    return _c("32", t)
-
-
-def yellow(t: str) -> str:
-    return _c("33", t)
-
-
-def dim(t: str) -> str:
-    return _c("2", t)
-
-
-def bold(t: str) -> str:
-    return _c("1", t)
-
+CYAN   = "\033[96m"
+GREEN  = "\033[92m"
+YELLOW = "\033[93m"
+GRAY   = "\033[90m"
+RESET  = "\033[0m"
+BOLD   = "\033[1m"
 
 # ---------------------------------------------------------------------------
 # System prompt
 # ---------------------------------------------------------------------------
+SYSTEM_PROMPT = """Eres un analista experto en remates judiciales inmobiliarios en Chile.
 
-SYSTEM_PROMPT = """Eres un analista institucional especializado en remates judiciales inmobiliarios chilenos.
+Tu rol es ayudar a evaluar activos en remate judicial para inversiones de tipo flip (compra → renovación → venta).
+Tienes acceso a un motor financiero calibrado con datos reales del mercado chileno 2024-2025.
 
-Tu rol es asesorar a inversionistas sobre las oportunidades de compra en remate, interpretar los análisis
-financieros del portafolio Tier-A, y ayudar a tomar decisiones de oferta fundamentadas.
+CONTEXTO DEL MERCADO:
+- Unidad de Fomento (UF): unidad indexada a inflación (~$38.000 CLP). Todos los precios están en UF.
+- Remates judiciales: subastas de propiedades con deudas hipotecarias. Se compran con descuento significativo.
+- Ciclo flip típico: 9-11 meses (adjudicación → renovación → venta).
+- ROI objetivo: 18-22% (buena operación). ≥25% = excelente. <15% = no recomendable.
+- Costos de entrada: 4.5% (martillero 1.5% + notaría/CBR 2% + otros 1%).
+- Deudas ocultas: gastos comunes + contribuciones atrasadas (normalmente 18-36 meses en mora).
 
-Contexto del mercado (Chile 2025-2026):
-- Los remates judiciales ofrecen descuentos del 15-35 % vs el mercado libre.
-- El ciclo típico de flip (adjudicación → renovación → venta) es de 9-11 meses en escenario estándar.
-- Los costos de entrada incluyen martillero (~1.5 %), notaría/CBR (~2 %), y otros (~1 %).
-- La renovación media es 7-9 UF/m² en escenario estándar.
-- ROI objetivo para operaciones competitivas: 18-22 %. Excelente: 25-30 %+.
-- Las deudas ocultas (gastos comunes + contribuciones atrasadas) suelen ser 80-220 UF.
+ESCENARIOS DISPONIBLES:
+- cosmetico: pintura, pisos, limpieza. 4.5 UF/m², 6 meses, venta al 83% del mercado.
+- estandar: baños, cocina, electricidad. 8 UF/m², 10 meses, venta al 88%. (REFERENCIA)
+- deteriorado: renovación pesada, ocupante posible. 13 UF/m², 13 meses, venta al 85%.
+- stress: problemas estructurales, todo sale mal. 18 UF/m², 17 meses, venta al 80%.
 
-Instrucciones:
-- Responde siempre en español.
-- Usa las herramientas disponibles para obtener datos precisos antes de dar recomendaciones.
-- Cuando el usuario pregunte por un activo sin especificar escenario, usa 'estandar' por defecto.
-- Sé directo y cuantitativo: incluye UF, porcentajes y fechas cuando sea relevante.
-- Advierte sobre riesgos cuando corresponda (poca confianza en comparables, urgencia de remate, etc.).
-- No inventes datos; si no tienes la información, usa list_assets o get_asset_detail para obtenerla.
-"""
+ACTIVOS ACTUALES (Tier A, abril-mayo 2026):
+- #77833: Viña del Mar, 50m², 650 UF base. Ya vendido como validación (60 UF/m²).
+- #77948: La Serena, 59m², 700 UF base. 8 comparables, 3d/2b. PRIORITARIO.
+- #77947: La Serena, 49m², 600 UF base. 3d/1b (ajuste -12%). Mismo día que #77948.
+
+Cuando el usuario pregunte sobre activos, usa las herramientas disponibles para dar análisis concretos con números.
+Siempre menciona los riesgos relevantes: confianza de comparables, conflicto de capital, deudas ocultas.
+Responde en español. Sé directo y conciso — este es un contexto de inversión real."""
 
 # ---------------------------------------------------------------------------
-# Agent loop
+# Agentic loop
 # ---------------------------------------------------------------------------
 
-MAX_ITERATIONS = 12  # safety cap to avoid infinite loops
+def run_agent(client: anthropic.Anthropic, messages: list) -> tuple:
+    """Run the agentic loop. Returns (final_text, updated_messages)."""
+    MAX_ITER = 12
 
-
-def run_agent(client: anthropic.Anthropic, messages: list[dict]) -> str:
-    """Execute one full agentic turn (may involve multiple tool calls).
-
-    Returns the final text response.
-    """
-    for iteration in range(MAX_ITERATIONS):
+    for iteration in range(MAX_ITER):
         response = client.messages.create(
             model="claude-opus-4-7",
             max_tokens=4096,
-            thinking={"type": "adaptive"},
+            thinking={"type": "adaptive", "budget_tokens": 2000},
             system=SYSTEM_PROMPT,
             tools=TOOL_DEFINITIONS,
             messages=messages,
         )
 
-        # Collect text blocks to show the user
-        text_blocks = [b for b in response.content if b.type == "text"]
-        tool_use_blocks = [b for b in response.content if b.type == "tool_use"]
+        text_parts = []
+        tool_uses = []
+        for block in response.content:
+            if block.type == "text":
+                text_parts.append(block.text)
+            elif block.type == "tool_use":
+                tool_uses.append(block)
 
-        if response.stop_reason == "end_turn" or not tool_use_blocks:
-            # Done — return the final text
-            return "\n".join(b.text for b in text_blocks).strip()
-
-        # Append assistant message (must include tool_use blocks)
         messages.append({"role": "assistant", "content": response.content})
 
-        # Stream any partial text while tools execute
-        for tb in text_blocks:
-            if tb.text.strip():
-                print(dim(f"  [{tb.text.strip()}]"), flush=True)
+        if response.stop_reason == "end_turn" or not tool_uses:
+            return " ".join(text_parts).strip(), messages
 
-        # Execute tools and build tool_result blocks
         tool_results = []
-        for tu in tool_use_blocks:
-            print(dim(f"  ⚙  {tu.name}({json.dumps(tu.input, ensure_ascii=False)[:120]}…)"), flush=True)
+        for tu in tool_uses:
+            print(f"{GRAY}  [tool] {tu.name}({json.dumps(tu.input, ensure_ascii=False)[:120]}){RESET}")
             result_str = dispatch(tu.name, tu.input)
             tool_results.append({
                 "type": "tool_result",
@@ -137,85 +105,54 @@ def run_agent(client: anthropic.Anthropic, messages: list[dict]) -> str:
 
         messages.append({"role": "user", "content": tool_results})
 
-    return "(Se alcanzó el límite de iteraciones del agente.)"
+    return "(máximo de iteraciones alcanzado)", messages
 
 
 # ---------------------------------------------------------------------------
 # REPL
 # ---------------------------------------------------------------------------
 
-WELCOME = """
-╔══════════════════════════════════════════════════════════════╗
-║   Agente de Remates Inmobiliarios — Portafolio Tier-A       ║
-║   Escribe 'salir' o presiona Ctrl+C para terminar.          ║
-╚══════════════════════════════════════════════════════════════╝
-"""
-
-EXAMPLES = [
-    "¿Qué activos hay disponibles?",
-    "Analiza el activo 77948 en escenario estándar",
-    "¿Cuánto puedo ofrecer por el #77833 para obtener 25% ROI?",
-    "Compara los activos en La Serena",
-    "Corre Monte Carlo para 77947",
-]
-
-
-def main() -> None:
-    global _USE_COLOR
-
-    parser = argparse.ArgumentParser(description="Agente conversacional de remates inmobiliarios")
-    parser.add_argument("--no-color", action="store_true", help="Desactivar colores ANSI")
-    parser.add_argument("--debug", action="store_true", help="Mostrar mensajes de debug")
-    args = parser.parse_args()
-
-    if args.no_color:
-        _USE_COLOR = False
-
+def main():
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        print("Error: la variable de entorno ANTHROPIC_API_KEY no está definida.")
-        sys.exit(1)
+        print(f"{YELLOW}Advertencia: ANTHROPIC_API_KEY no está definida.{RESET}")
 
     client = anthropic.Anthropic(api_key=api_key)
+    messages = []
 
-    print(bold(WELCOME))
-    print(cyan("Ejemplos de preguntas:"))
-    for ex in EXAMPLES:
-        print(f"  • {ex}")
-    print()
-
-    conversation: list[dict] = []
+    print(f"\n{BOLD}{CYAN}╔{'═'*46}╗{RESET}")
+    print(f"{BOLD}{CYAN}║   Agente de Remates Inmobiliarios — Chile    ║{RESET}")
+    print(f"{BOLD}{CYAN}╚{'═'*46}╝{RESET}")
+    print(f"{GRAY}Activos Tier A: #77833 (Viña), #77948 (La Serena), #77947 (La Serena){RESET}")
+    print(f"{GRAY}Escribe 'salir' para terminar. 'reset' para nueva conversación.{RESET}\n")
 
     while True:
         try:
-            user_input = input(bold(green("Tú: "))).strip()
+            user_input = input(f"{GREEN}Tú: {RESET}").strip()
         except (EOFError, KeyboardInterrupt):
-            print("\n" + dim("Hasta luego."))
+            print(f"\n{GRAY}Hasta luego.{RESET}")
             break
 
         if not user_input:
             continue
-        if user_input.lower() in {"salir", "exit", "quit", "q"}:
-            print(dim("Hasta luego."))
+        if user_input.lower() in ("salir", "exit", "quit"):
+            print(f"{GRAY}Hasta luego.{RESET}")
             break
+        if user_input.lower() == "reset":
+            messages = []
+            print(f"{GRAY}[Conversación reiniciada]{RESET}\n")
+            continue
 
-        conversation.append({"role": "user", "content": user_input})
+        messages.append({"role": "user", "content": user_input})
 
-        print(bold(yellow("Agente: ")), end="", flush=True)
         try:
-            reply = run_agent(client, conversation)
-        except anthropic.APIError as exc:
-            reply = f"[Error de API: {exc}]"
+            reply, messages = run_agent(client, messages)
+        except Exception as e:
+            print(f"{YELLOW}Error: {e}{RESET}\n")
+            messages.pop()
+            continue
 
-        print(reply)
-        print()
-
-        # Append assistant reply to history if not already added by the tool loop.
-        # run_agent appends assistant + tool_result pairs inside the loop, so the
-        # final assistant text response may not yet be in conversation.
-        last = conversation[-1] if conversation else None
-        if last is None or last.get("role") != "assistant":
-            conversation.append({"role": "assistant", "content": reply})
+        print(f"\n{CYAN}{BOLD}Agente:{RESET} {reply}\n")
 
 
 if __name__ == "__main__":
